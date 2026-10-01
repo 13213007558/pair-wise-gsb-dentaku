@@ -121,6 +121,7 @@ describe TestVisitor do
     visit_nodes('XOR(false, false)')
     visit_nodes('duration(1, day)')
     visit_nodes('MAP(vals, val, val + 1)')
+    visit_nodes('LET(x, 1, x + 1)')
     visit_nodes('FILTER(vals, val, val > 1)')
     visit_nodes('REDUCE(vals, memo, val, memo + val)')
 

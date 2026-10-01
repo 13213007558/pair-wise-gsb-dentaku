@@ -218,6 +218,25 @@ String: `LEFT`, `RIGHT`, `MID`, `LEN`, `FIND`, `SUBSTITUTE`, `CONCAT`, `CONTAINS
 
 Collection: `MAP`, `FILTER`, `ALL`, `ANY`, `PLUCK`
 
+Scoping: `LET`
+
+`LET(name1, value1, name2, value2, ..., result)` binds local names so a
+repeated subexpression (like a tax rate) only has to be written -- and
+changed -- in one place:
+
+```ruby
+calculator.evaluate('LET(rate, 0.2, tax, price * rate, price + tax)', price: 100)
+#=> 120.0
+```
+
+Each binding value is evaluated once, in order, and may reference names
+bound earlier in the same `LET`; the final result expression sees every
+binding. `LET` nests freely inside `MAP`, `FILTER`, and other `LET`s, and
+bindings are only visible inside their own `LET`. Duplicate names,
+references to names bound later, and names that collide with nested field
+paths (e.g. `item.price`) are rejected with an error that points at the
+offending binding.
+
 RESOLVING DEPENDENCIES
 ----------------------
 
