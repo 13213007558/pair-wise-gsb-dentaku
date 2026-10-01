@@ -65,7 +65,7 @@ module Dentaku
       end
 
       def dependencies(context = {})
-        return all_dependencies(context) if static_mode?(context) || !prunable?
+        return all_dependencies(context) if no_evaluation?(context) || !prunable?
 
         switch_value = @switch.value(context)
 

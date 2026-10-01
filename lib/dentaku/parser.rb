@@ -99,7 +99,7 @@ module Dentaku
 
       fail! :invalid_statement unless output.count == 1
 
-      output.first
+      AST::Let.validate(output.first)
     end
 
     def operation(token)
@@ -153,6 +153,12 @@ module Dentaku
     end
 
     def handle_function(token)
+      if token.value == :let
+        arities.push 0
+        operations.push AST::Let
+        return
+      end
+
       func = function(token)
       fail! :undefined_function, function_name: token.value if func.nil?
       arities.push 0

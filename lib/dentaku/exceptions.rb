@@ -52,7 +52,7 @@ module Dentaku
       node_invalid too_few_operands too_many_operands undefined_function
       unprocessed_token unknown_case_token unbalanced_bracket
       unbalanced_parenthesis unknown_grouping_token not_implemented_token_category
-      invalid_statement
+      invalid_statement duplicate_binding forward_reference conflicting_binding
     ].freeze
 
     def self.for(reason, **meta)
@@ -66,7 +66,7 @@ module Dentaku
     private
 
     def default_message
-      case reason
+      message = case reason
       when :node_invalid
         if meta.key?(:operation)
           expected = Array(meta[:expected]).map { |e| e == :incompatible ? :compatible : e }
@@ -94,7 +94,15 @@ module Dentaku
         "Not implemented for tokens of category #{meta[:token_category]}"
       when :invalid_statement
         "Invalid statement"
+      when :duplicate_binding
+        "LET() binds #{meta[:name]} more than once"
+      when :forward_reference
+        "LET() cannot reference #{meta[:name]} before it is bound"
+      when :conflicting_binding
+        "LET() bindings #{meta[:name]} and #{meta[:other_name]} conflict"
       end
+      location = [meta[:line] && "line #{meta[:line]}", meta[:column] && "column #{meta[:column]}"].compact.join(', ')
+      location.empty? ? message : "#{message} at #{location}"
     end
   end
 

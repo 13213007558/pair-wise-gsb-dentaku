@@ -15,6 +15,7 @@ module Dentaku
       @aliases = options.fetch(:aliases, global_aliases)
       input    = strip_comments(string.to_s.dup)
       input    = replace_aliases(input)
+      @source = input
 
       scanner_options = {
         case_sensitive: options.fetch(:case_sensitive, false),
@@ -22,8 +23,9 @@ module Dentaku
       }
 
       until input.empty?
+        token_offset = @source.length - input.length
         scanned = TokenScanner.scanners(scanner_options).any? do |scanner|
-          scanned, input = scan(input, scanner)
+          scanned, input, token_offset = scan(input, scanner, token_offset)
           scanned
         end
 
@@ -41,9 +43,14 @@ module Dentaku
       @tokens.last
     end
 
-    def scan(string, scanner)
+    def scan(string, scanner, offset = 0)
       if tokens = scanner.scan(string, last_token)
+        token_offset = offset
         tokens.each do |token|
+          prefix = original_source[0...token_offset]
+          token.line = prefix.count("\n") + 1
+          token.column = token_offset - (prefix.rindex("\n") || -1)
+          token_offset += token.to_s.length
           if token.empty?
             fail! :unexpected_zero_width_match,
                   token_category: token.category, at: string
@@ -57,14 +64,18 @@ module Dentaku
         end
 
         match_length = tokens.map(&:length).reduce(:+)
-        [true, string[match_length..-1]]
+        [true, string[match_length..-1], offset]
       else
-        [false, string]
+        [false, string, offset]
       end
     end
 
+    def original_source
+      @source ||= ''
+    end
+
     def strip_comments(input)
-      input.gsub(/\/\*[^*]*\*+(?:[^*\/][^*]*\*+)*\//, '')
+      input.gsub(/\/\*[^*]*\*+(?:[^*\/][^*]*\*+)*\//) { |comment| comment.gsub(/[^\n]/, ' ') }
     end
 
     def replace_aliases(string)

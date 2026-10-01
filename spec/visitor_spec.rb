@@ -99,6 +99,7 @@ describe TestVisitor do
       :Literal,
       :Node,
       :Operation,
+      :ScopeValidator,
       :StringFunctions,
       :RubyMath,
       :Enum,
@@ -123,6 +124,7 @@ describe TestVisitor do
     visit_nodes('MAP(vals, val, val + 1)')
     visit_nodes('FILTER(vals, val, val > 1)')
     visit_nodes('REDUCE(vals, memo, val, memo + val)')
+    visit_nodes('LET(rate, 0.1, total, 100 * rate, total)')
 
     @expected = Set.new(Dentaku::AST::constants - generic_subclasses)
     expect(@visited.sort).to eq(@expected.sort)

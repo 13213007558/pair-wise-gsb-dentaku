@@ -14,8 +14,10 @@ module Dentaku
         Float::INFINITY
       end
 
+      attr_reader :elements
+
       def initialize(*elements)
-        @elements = *elements
+        @elements = elements
       end
 
       def value(context = {})

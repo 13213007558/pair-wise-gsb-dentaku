@@ -199,6 +199,35 @@ identifier on a branch that is not taken will not be reported; use
 Context keys prefixed with a double underscore (e.g. `__evaluation_mode`)
 are reserved for internal use.
 
+LOCAL BINDINGS WITH LET
+-----------------------
+
+`LET(name, value, ..., result)` introduces local names for one formula. Each
+binding is sequential: a later value expression and the final result may refer
+to earlier names, but a binding cannot refer to itself or to names declared
+later. Names are block-scoped, so `LET` may be nested and an inner binding may
+shadow an outer one. `LET` also works inside `MAP`, `FILTER`, and `REDUCE`.
+
+```ruby
+calculator.evaluate!('LET(rate, 0.1, base, 100, base * rate)') #=> 10
+calculator.evaluate!('MAP(prices, price, LET(tax, price * rate, price + tax))',
+                     prices: [10, 20], rate: 0.1)                 #=> [11, 22]
+```
+
+Binding values are evaluated once for each entry into that `LET`, in binding
+order, even if the name is used repeatedly. Bindings live only in the merged
+evaluation context for that formula and do not remain in calculator memory.
+
+Two bindings in the same `LET` cannot use the same name or nested field paths
+that overlap (for example, `tax` and `tax.rate`). Nested shadowing is still
+allowed: an inner `LET(tax, ...)` can bind `tax` independently of an outer
+`tax`. Parse errors identify the offending binding or reference by line and
+column. The calculator's case-sensitivity option applies to local names.
+
+`dependencies` and `identifiers` treat local names as lexical bindings rather
+than free variables. Static identifier collection never evaluates a LET binding
+or calls a function.
+
 BUILT-IN OPERATORS AND FUNCTIONS
 ---------------------------------
 
@@ -217,6 +246,8 @@ Selections: `CASE` (syntax see [spec](https://github.com/rubysolo/dentaku/blob/m
 String: `LEFT`, `RIGHT`, `MID`, `LEN`, `FIND`, `SUBSTITUTE`, `CONCAT`, `CONTAINS`
 
 Collection: `MAP`, `FILTER`, `ALL`, `ANY`, `PLUCK`
+
+Local bindings: `LET`
 
 RESOLVING DEPENDENCIES
 ----------------------

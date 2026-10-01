@@ -22,7 +22,7 @@ module Dentaku
       end
 
       def dependencies(context = {})
-        return super if static_mode?(context)
+        return super if no_evaluation?(context)
 
         left_deps = left.dependencies(context)
         right_deps = right.dependencies(context)

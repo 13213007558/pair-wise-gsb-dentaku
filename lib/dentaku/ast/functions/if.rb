@@ -36,7 +36,7 @@ module Dentaku
       end
 
       def dependencies(context = {})
-        return all_arg_dependencies(context) if static_mode?(context) || !predicate.pure?
+        return all_arg_dependencies(context) if no_evaluation?(context) || !predicate.pure?
 
         predicate.value(context) ? left.dependencies(context) : right.dependencies(context)
       rescue Dentaku::Error

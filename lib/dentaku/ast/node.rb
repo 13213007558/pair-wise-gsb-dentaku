@@ -6,6 +6,8 @@ module Dentaku
       # guards are never evaluated and every branch is reported
       STATIC_MODE_KEY = "__static_dependencies".freeze
       STATIC_CONTEXT = { STATIC_MODE_KEY => true }.freeze
+      LOCAL_SCOPE_KEY = "__local_scope".freeze
+      NO_EVALUATION_KEY = "__no_evaluation".freeze
 
       def self.precedence
         0
@@ -21,6 +23,10 @@ module Dentaku
 
       def dependencies(context = {})
         []
+      end
+
+      def validate_scopes!
+        self
       end
 
       # whether this subtree may be evaluated during dependency resolution
@@ -44,6 +50,10 @@ module Dentaku
 
       def static_mode?(context)
         context[STATIC_MODE_KEY] == true
+      end
+
+      def no_evaluation?(context)
+        static_mode?(context) || context[NO_EVALUATION_KEY] == true
       end
 
       def compute_pure?
