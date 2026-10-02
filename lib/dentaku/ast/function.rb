@@ -29,12 +29,29 @@ module Dentaku
         false
       end
 
+      # optional derivative rule used by Dentaku::Gradient: a callable
+      # receiving (values, gradients) for the already-evaluated arguments
+      # and returning either an array of partial derivatives (one per
+      # argument, chained with the argument gradients) or a complete
+      # gradient hash
+      def self.derivative
+        @derivative
+      end
+
+      def self.derivative=(rule)
+        @derivative = rule
+      end
+
       def self.get(name)
         registry.get(name)
       end
 
-      def self.register(name, type, implementation, volatile: false)
-        registry.register(name, type, implementation, volatile: volatile)
+      def self.register(name, type, implementation, volatile: false, derivative: nil)
+        registry.register(name, type, implementation, volatile: volatile, derivative: derivative)
+      end
+
+      def self.register_derivative(name, rule)
+        registry.register_derivative(name, rule)
       end
 
       def self.register_class(name, function_class)

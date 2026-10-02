@@ -282,6 +282,45 @@ be evaluated (e.g. raise `ZeroDivisionError`).  The non-bang `solve` method will
 find as many solutions as possible and return the symbol `:undefined` for the
 problem formulas.
 
+#### Calculator.evaluate_with_gradient! / Calculator.evaluate_with_gradient
+Evaluate an expression and compute its first-order partial derivatives with
+respect to chosen numeric variables in a single pass:
+
+```ruby
+calc = Dentaku::Calculator.new
+result = calc.evaluate_with_gradient!(
+  "IF(qty > 10, price * qty * 0.9, price * qty)",
+  { price: 20, qty: 5 },
+  wrt: %i[price qty]
+)
+result.value     #=> 100
+result.gradient  #=> {"price"=>5, "qty"=>20}
+```
+
+`result.value` is exactly what `evaluate!` would return. Only the branches
+that normal evaluation executes are visited, so functions on the untaken
+side of an `IF` are never called and errors there do not surface.
+
+Differentiation covers arithmetic (`+ - * / %`), exponentiation, `ABS`,
+`MIN`/`MAX`, `ROUND`/`ROUNDUP`/`ROUNDDOWN`, and the `Math` functions
+(`SIN`, `COS`, `EXP`, `LOG`, `SQRT`, ...). Custom functions need a
+derivative rule, registered together with the function or separately:
+
+```ruby
+calc.add_function(:discount, :numeric, ->(price, qty) { price * qty })
+calc.register_derivative(:discount) { |values, _gradients| [values[1], values[0]] }
+```
+
+The rule receives the evaluated argument values and their gradients and
+returns one partial derivative per argument (or a complete gradient hash).
+Evaluating a numeric function without a rule raises
+`Dentaku::UnsupportedDerivativeError` -- Dentaku never silently falls back
+to finite differences. Points where the expression is not differentiable
+(a comparison exactly on its boundary, `ABS(0)`, tied `MIN`/`MAX`
+arguments) raise `Dentaku::NonDifferentiableError`. The non-bang
+`evaluate_with_gradient` returns `nil` on any `Dentaku::Error`, just like
+`evaluate`.
+
 INLINE COMMENTS
 ---------------------------------
 

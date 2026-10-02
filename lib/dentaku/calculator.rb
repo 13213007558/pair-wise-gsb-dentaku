@@ -2,6 +2,7 @@ require 'dentaku/bulk_expression_solver'
 require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
+require 'dentaku/gradient'
 require 'dentaku/parser'
 require 'dentaku/string_casing'
 require 'dentaku/token'
@@ -34,16 +35,27 @@ module Dentaku
       @aliases || Dentaku.aliases
     end
 
-    def self.add_function(name, type, body, callback = nil, volatile: false)
-      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile)
+    def self.add_function(name, type, body, callback = nil, volatile: false, derivative: nil)
+      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile, derivative: derivative)
     end
 
     def self.add_functions(functions)
       functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
     end
 
-    def add_function(name, type, body, callback = nil, volatile: false)
-      @function_registry.register(name, type, body, callback, volatile: volatile)
+    def add_function(name, type, body, callback = nil, volatile: false, derivative: nil)
+      @function_registry.register(name, type, body, callback, volatile: volatile, derivative: derivative)
+      self
+    end
+
+    # register (or replace) the derivative rule for a function. The rule
+    # is called with the evaluated argument values and their gradients
+    # and returns either one partial derivative per argument (an array)
+    # or a complete gradient hash. Without a rule, differentiating an
+    # expression that executes the function raises
+    # Dentaku::UnsupportedDerivativeError.
+    def register_derivative(name, rule = nil, &block)
+      @function_registry.register_derivative(name, rule || block)
       self
     end
 
@@ -91,6 +103,48 @@ module Dentaku
 
     private def evaluate_array!(expression, data = {}, &block)
       expression.map { |e| evaluate!(e, data, &block) }
+    end
+
+    # Evaluate the expression and also compute its first-order partial
+    # derivatives with respect to the numeric variables named in +wrt+.
+    # Returns a Dentaku::Gradient::Result whose #value is exactly what
+    # #evaluate! would return and whose #gradient maps each requested
+    # (case-standardized) variable name to its partial derivative.
+    #
+    # Only the branches that normal evaluation executes are visited, so
+    # functions on the untaken side of an IF are never called. Reaching a
+    # numeric function without a registered derivative rule raises
+    # Dentaku::UnsupportedDerivativeError; points where the expression is
+    # not differentiable (comparison boundaries, ABS at zero, MIN/MAX
+    # ties) raise Dentaku::NonDifferentiableError.
+    def evaluate_with_gradient!(expression, data = {}, wrt: [])
+      context = evaluation_context(data, :strict)
+      return expression.map { |e| evaluate_with_gradient!(e, context, wrt: wrt) } if expression.is_a?(Array)
+
+      store(context) do
+        node = ast(expression)
+        unbound = node.dependencies(memory)
+
+        unless unbound.empty?
+          raise UnboundVariableError.new(unbound),
+                "no value provided for variables: #{unbound.uniq.join(', ')}"
+        end
+
+        variables = wrt.map { |name| standardize_case(name.to_s) }
+        trace = Gradient::Evaluator.new(memory, variables).evaluate(node)
+        gradient = {}
+        variables.each { |name| gradient[name] = trace.grad[name] || 0 }
+
+        Gradient::Result.new(trace.value, gradient)
+      end
+    end
+
+    # Like #evaluate, returns nil (yielding the expression and error to
+    # an optional block) instead of raising Dentaku::Error subclasses.
+    def evaluate_with_gradient(expression, data = {}, wrt: [], &block)
+      evaluate_with_gradient!(expression, data, wrt: wrt)
+    rescue Dentaku::Error => ex
+      block.call(expression, ex) if block_given?
     end
 
     def solve!(expression_hash)

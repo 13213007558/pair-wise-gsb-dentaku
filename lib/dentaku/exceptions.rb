@@ -27,6 +27,74 @@ module Dentaku
     end
   end
 
+  # Raised by Calculator#evaluate_with_gradient! when the expression cannot
+  # be differentiated at the given inputs: a comparison sits exactly on its
+  # boundary, ABS is evaluated at zero, MIN/MAX have tied arguments, or a
+  # derivative would be unbounded.
+  class NonDifferentiableError < BaseError
+    attr_reader :reason, :meta
+
+    def initialize(reason, **meta)
+      @reason = reason
+      @meta = meta
+      super(default_message)
+    end
+
+    private_class_method :new
+
+    VALID_REASONS = %i[
+      comparison_boundary
+      abs_zero
+      min_max_tie
+      round_kink
+      modulo_boundary
+      power_indeterminate
+      unbounded_derivative
+    ].freeze
+
+    def self.for(reason, **meta)
+      unless VALID_REASONS.include?(reason)
+        raise ::ArgumentError, "Unhandled #{reason}"
+      end
+
+      new(reason, **meta)
+    end
+
+    private
+
+    def default_message
+      case reason
+      when :comparison_boundary
+        "Expression is not differentiable at the boundary of comparison #{meta[:operator]}"
+      when :abs_zero
+        "ABS is not differentiable at 0"
+      when :min_max_tie
+        "#{meta[:function_name]} is not differentiable when its extreme arguments tie"
+      when :round_kink
+        "#{meta[:function_name]} is not differentiable at a rounding boundary"
+      when :modulo_boundary
+        "Modulo is not differentiable at a multiple of the divisor"
+      when :power_indeterminate
+        "Exponentiation is not differentiable at the given base and exponent"
+      when :unbounded_derivative
+        "Derivative of #{meta[:function_name]} is unbounded at the given arguments"
+      end
+    end
+  end
+
+  # Raised by Calculator#evaluate_with_gradient! when evaluation reaches a
+  # function that has no derivative rule registered. Dentaku never falls
+  # back to finite differences, so this is always a hard error.
+  class UnsupportedDerivativeError < BaseError
+    attr_reader :function_name
+
+    def initialize(function_name)
+      @function_name = function_name
+      super("No derivative rule registered for function #{function_name}; " +
+            "register one with Calculator#register_derivative")
+    end
+  end
+
   class NodeError < BaseError
     attr_reader :operand, :expected, :actual
 

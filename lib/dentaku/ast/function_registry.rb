@@ -8,7 +8,7 @@ module Dentaku
         nil
       end
 
-      def register(name, type, implementation, callback = nil, volatile: false)
+      def register(name, type, implementation, callback = nil, volatile: false, derivative: nil)
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -96,8 +96,19 @@ module Dentaku
         function.implementation = implementation
         function.callback = callback
         function.volatile = volatile
+        function.derivative = derivative
 
         self[function_name(name)] = function
+      end
+
+      # attach a derivative rule to an already-registered function; the
+      # rule is a callable receiving (values, gradients) for the
+      # evaluated arguments, see Function.derivative
+      def register_derivative(name, rule)
+        function = get(name)
+        raise ::ArgumentError, "undefined function #{name}" unless function
+
+        function.derivative = rule
       end
 
       def register_class(name, function_class)

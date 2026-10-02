@@ -1,5 +1,17 @@
 # Change Log
 
+## [Unreleased]
+- add `Calculator#evaluate_with_gradient` / `#evaluate_with_gradient!`,
+  which evaluate an expression once and return both the plain value and
+  its first-order partial derivatives with respect to the variables named
+  in `wrt:`. Only executed `IF` branches are visited, so functions on the
+  untaken side are never called. Custom functions accept a derivative rule
+  via `add_function(..., derivative:)` or `Calculator#register_derivative`;
+  reaching a numeric function without a rule raises
+  `Dentaku::UnsupportedDerivativeError` (never a silent finite-difference
+  fallback), and non-differentiable points (comparison boundaries,
+  `ABS(0)`, `MIN`/`MAX` ties) raise `Dentaku::NonDifferentiableError`.
+
 ## [v4.0.2] 2026-08-02
 - the 4.0.1 guard against arithmetic that rejects a well-typed operand only
   worked on Ruby 3.4+. Ruby 3.2 and 3.3 do not raise for an oversized
