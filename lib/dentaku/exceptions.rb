@@ -202,7 +202,61 @@ module Dentaku
     end
   end
 
+  class DecimalError < BaseError
+    include Error
+
+    SIGNAL_NAMES = {
+      division_by_zero: 'Division by zero',
+      overflow: 'Decimal overflow',
+      inexact: 'Result is not exact'
+    }.freeze
+
+    attr_reader :decimal_signal
+
+    def initialize(signal = nil, message = nil)
+      @decimal_signal = signal
+      super(message || (signal ? SIGNAL_NAMES.fetch(signal) : nil))
+    end
+
+    def self.for(signal)
+      case signal
+      when :division_by_zero then ZeroDivisionError.new
+      when :overflow then DecimalOverflowError.new
+      when :inexact then InexactDecimalResultError.new
+      else new(signal, SIGNAL_NAMES.fetch(signal))
+      end
+    end
+  end
+
+  class DecimalOverflowError < DecimalError
+    def initialize
+      super(:overflow, SIGNAL_NAMES.fetch(:overflow))
+    end
+  end
+
+  class InexactDecimalResultError < DecimalError
+    def initialize
+      super(:inexact, SIGNAL_NAMES.fetch(:inexact))
+    end
+  end
+
+  class DecimalUnsupportedFunctionError < BaseError
+    include Error
+
+    def initialize(function_name)
+      super("#{function_name}() does not support exact decimal semantics; provide a decimal_implementation or calculate outside decimal context")
+    end
+  end
+
   class ZeroDivisionError < ::ZeroDivisionError
     include Error
+
+    attr_reader :decimal_signal
+
+    def initialize(message = DecimalError::SIGNAL_NAMES.fetch(:division_by_zero))
+      @decimal_signal = :division_by_zero
+      super(message)
+    end
   end
+
 end

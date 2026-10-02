@@ -86,6 +86,46 @@ calculator.evaluate!('10 * x')
 Dentaku::UnboundVariableError: Dentaku::UnboundVariableError
 ```
 
+DECIMAL CONTEXTS
+----------------
+
+By default, Dentaku keeps its historical Integer/Float/BigDecimal behavior.
+Opt into exact decimal evaluation for one calculation by passing a
+`Dentaku::DecimalContext` as the third argument:
+
+```ruby
+context = Dentaku::DecimalContext.new(
+  precision: 6,
+  rounding_mode: :half_even,
+  division_by_zero: :record,
+  overflow: :record,
+  inexact: :record
+)
+
+calculator.evaluate!('1 / 3', {}, { decimal_context: context })
+#=> 0.333333e0
+
+context.signals
+#=> [:inexact]
+```
+
+Signals can be recorded or raised independently for `:division_by_zero`,
+`:overflow`, and `:inexact`. Each top-level evaluation resets signals, and the
+context is scoped to that calculation; Dentaku never calls `BigDecimal.mode`,
+`BigDecimal.limit`, or their process-wide setters. A context can also be
+configured on a calculator:
+
+```ruby
+calculator = Dentaku::Calculator.new(decimal_context: { precision: 4, inexact: :record })
+calculator.evaluate!('1 / 3')
+#=> 0.3333e0
+```
+
+String decimal literals/variables, `Integer`, `BigDecimal`, arithmetic,
+exponentiation, and supported aggregate/rounding functions use the context.
+Binary `Float` and functions that cannot provide decimal semantics (such as
+`sqrt`) raise or return a clear unsupported-function error.
+
 Dentaku has built-in functions (including `if`, `not`, `min`, `max`, `sum`, and
 `round`) and the ability to define custom functions (see below). Functions
 generally work like their counterparts in Excel:

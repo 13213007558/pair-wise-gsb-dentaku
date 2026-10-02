@@ -8,7 +8,8 @@ module Dentaku
         nil
       end
 
-      def register(name, type, implementation, callback = nil, volatile: false)
+      def register(name, type, implementation, callback = nil, volatile: false, decimal: nil,
+                   decimal_implementation: nil)
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -65,21 +66,55 @@ module Dentaku
             @volatile
           end
 
+          def self.decimal=(decimal)
+            @decimal = decimal
+          end
+
+          def self.decimal?
+            @decimal == true
+          end
+
+          def self.decimal_implementation=(implementation)
+            @decimal_implementation = implementation
+          end
+
+          def self.decimal_implementation
+            @decimal_implementation
+          end
+
           def self.arity
-            @implementation.arity < 0 ? nil : @implementation.arity
+            parameters = public_parameters
+            return nil if parameters.any? { |type, _name| %i[opt rest].include?(type) }
+
+            parameters.count
           end
 
           def self.min_param_count
-            @implementation.parameters.select { |type, _name| type == :req }.count
+            public_parameters.count { |type, _name| type == :req }
           end
 
           def self.max_param_count
-            @implementation.parameters.select { |type, _name| type == :rest }.any? ? Float::INFINITY : @implementation.parameters.count
+            parameters = public_parameters
+            return Float::INFINITY if parameters.any? { |type, _name| type == :rest }
+
+            parameters.count { |type, _name| %i[req opt].include?(type) }
+          end
+
+          def self.public_parameters
+            @implementation.parameters
           end
 
           def value(context = {})
             args = @args.map { |a| a.value(context) }
-            self.class.implementation.call(*args)
+            decimal_context = Dentaku.current_decimal_context
+            if decimal_context && self.class.decimal?
+              self.class.decimal_implementation.call(decimal_context, *args)
+            elsif decimal_context && %i[numeric list].include?(self.class.type)
+              function_name = self.class.name.to_s.split('::').last.to_s.upcase
+              raise Dentaku::DecimalUnsupportedFunctionError.new(function_name)
+            else
+              self.class.implementation.call(*args)
+            end
           end
 
           def type
@@ -96,6 +131,11 @@ module Dentaku
         function.implementation = implementation
         function.callback = callback
         function.volatile = volatile
+        function.decimal = decimal
+        function.decimal_implementation = decimal_implementation
+        if decimal && function.decimal_implementation.nil?
+          raise ::ArgumentError, 'decimal functions require a decimal_implementation'
+        end
 
         self[function_name(name)] = function
       end

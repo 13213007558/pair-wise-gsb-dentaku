@@ -10,11 +10,12 @@ module Dentaku
   class Calculator
     include StringCasing
     attr_reader :result, :memory, :tokenizer, :case_sensitive,
-                :nested_data_support, :ast_cache, :raw_date_literals
+                :nested_data_support, :ast_cache, :raw_date_literals,
+                :decimal_context, :current_decimal_context
 
     def initialize(case_sensitive: false, aliases: nil, nested_data_support: true,
                    raw_date_literals: true, ast_cache: {},
-                   cache_ast: nil, cache_dependency_order: nil)
+                   cache_ast: nil, cache_dependency_order: nil, decimal_context: nil)
       clear
       @tokenizer = Tokenizer.new
       @case_sensitive = case_sensitive
@@ -26,6 +27,8 @@ module Dentaku
       @cache_dependency_order = cache_dependency_order
       @disable_ast_cache = false
       @function_registry = Dentaku::AST::FunctionRegistry.new
+      @decimal_context = build_decimal_context(decimal_context)
+      @current_decimal_context = nil
     end
 
     # explicitly configured aliases win; otherwise the module-level default is
@@ -34,16 +37,24 @@ module Dentaku
       @aliases || Dentaku.aliases
     end
 
-    def self.add_function(name, type, body, callback = nil, volatile: false)
-      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile)
+    def self.add_function(name, type, body, callback = nil, volatile: false, decimal: nil,
+                          decimal_implementation: nil)
+      Dentaku::AST::FunctionRegistry.default.register(
+        name, type, body, callback,
+        volatile: volatile,
+        decimal: decimal,
+        decimal_implementation: decimal_implementation
+      )
     end
 
     def self.add_functions(functions)
       functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
     end
 
-    def add_function(name, type, body, callback = nil, volatile: false)
-      @function_registry.register(name, type, body, callback, volatile: volatile)
+    def add_function(name, type, body, callback = nil, volatile: false, decimal: nil,
+                     decimal_implementation: nil)
+      @function_registry.register(name, type, body, callback, volatile: volatile, decimal: decimal,
+                                  decimal_implementation: decimal_implementation)
       self
     end
 
@@ -59,25 +70,43 @@ module Dentaku
       @disable_ast_cache = false
     end
 
-    def evaluate(expression, data = {}, &block)
+    def evaluate(expression, data = {}, options = nil, &block)
+      explicit_context, shared = evaluation_options(options)
+      activate_decimal_context(explicit_context, shared)
       context = evaluation_context(data, :permissive)
-      return evaluate_array(expression, context, &block) if expression.is_a?(Array)
 
-      evaluate!(expression, context)
+      return evaluate_array(expression, context, false, &block) if expression.is_a?(Array)
+
+      evaluate_node(expression, context)
     rescue Dentaku::Error => ex
       block.call(expression, ex) if block_given?
     end
 
-    private def evaluate_array(expression, data = {}, &block)
-      expression.map { |e| evaluate(e, data, &block) }
+    private def evaluate_array(expression, data, strict, &block)
+      if strict
+        expression.map { |expression_item| evaluate!(expression_item, data, { share_decimal_context: true }, &block) }
+      else
+        expression.map { |expression_item| evaluate(expression_item, data, { share_decimal_context: true }, &block) }
+      end
     end
 
-    def evaluate!(expression, data = {}, &block)
+    def evaluate!(expression, data = {}, options = nil, &block)
+      explicit_context, shared = evaluation_options(options)
+      activate_decimal_context(explicit_context, shared)
       context = evaluation_context(data, :strict)
-      return evaluate_array!(expression, context, &block) if expression.is_a? Array
 
+      return evaluate_array(expression, context, true, &block) if expression.is_a? Array
+
+      evaluate_node(expression, context)
+    end
+
+    def decimal_signals
+      current_decimal_context&.signals || []
+    end
+
+    private def evaluate_node(expression, context)
       store(context) do
-        node = ast(expression)
+        node = expression.is_a?(Dentaku::AST::Node) ? expression : ast(expression)
         unbound = node.dependencies(memory)
 
         unless unbound.empty?
@@ -85,12 +114,10 @@ module Dentaku
                 "no value provided for variables: #{unbound.uniq.join(', ')}"
         end
 
-        node.value(memory)
+        Dentaku.with_decimal_context(current_decimal_context) do
+          node.value(memory)
+        end
       end
-    end
-
-    private def evaluate_array!(expression, data = {}, &block)
-      expression.map { |e| evaluate!(e, data, &block) }
     end
 
     def solve!(expression_hash)
@@ -167,7 +194,39 @@ module Dentaku
     end
 
     def evaluation_context(data, evaluation_mode)
-      data.key?(:__evaluation_mode) ? data : data.merge(__evaluation_mode: evaluation_mode)
+      return data if data.key?(:__evaluation_mode)
+
+      data.merge(__evaluation_mode: evaluation_mode)
+    end
+
+    private def build_decimal_context(value)
+      case value
+      when nil then nil
+      when Dentaku::DecimalContext then value
+      when ::Hash then Dentaku::DecimalContext.new(**value.transform_keys(&:to_sym))
+      else
+        raise ::ArgumentError, "invalid decimal context #{value.inspect}"
+      end
+    end
+
+    private def evaluation_options(options)
+      return [@decimal_context, false] unless options
+
+      [options.fetch(:decimal_context, @decimal_context), options.fetch(:share_decimal_context, false)]
+    end
+
+    private def activate_decimal_context(value, shared)
+      context = value.is_a?(Dentaku::DecimalContext) ? value : build_decimal_context(value)
+      context&.begin_calculation unless shared
+      @current_decimal_context = context
+      Thread.current[:dentaku_decimal_context] = context
+    end
+
+    private def activate_configured_decimal_context
+      context = @decimal_context
+      context&.begin_calculation
+      @current_decimal_context = context
+      Thread.current[:dentaku_decimal_context] = context
     end
 
     def store(key_or_hash, value = nil)

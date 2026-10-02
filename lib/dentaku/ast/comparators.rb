@@ -16,6 +16,13 @@ module Dentaku
       end
 
       def value(context = {})
+        decimal_context = Dentaku.current_decimal_context
+        if decimal_context
+          l = decimal_context.cast(left.value(context))
+          r = decimal_context.cast(right.value(context))
+          return l.public_send(operator, r)
+        end
+
         l = validate_value(cast(left.value(context)))
         r = validate_value(cast(right.value(context)))
 

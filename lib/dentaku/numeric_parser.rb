@@ -22,7 +22,24 @@ module Dentaku
       end
 
       def parse_numeric_string(raw)
-        raw =~ /(\.|e|E)/ ? BigDecimal(raw, Float::DIG + 1) : raw.to_i
+        raw =~ /(\.|e|E)/ ? BigDecimal(raw, 0) : raw.to_i
+      end
+
+      def decimal_value(raw)
+        return nil unless match(raw)
+
+        negative = raw.start_with?('-')
+        number = negative ? raw[1..-1] : raw
+
+        value = if number =~ /\A0x/i
+          parse_hexadecimal_string(number).to_d
+        elsif number =~ /(\.|e|E)/
+          BigDecimal(number, 0)
+        else
+          number.to_i.to_d
+        end
+
+        negative ? -value : value
       end
 
       def parse_hexadecimal_string(raw)

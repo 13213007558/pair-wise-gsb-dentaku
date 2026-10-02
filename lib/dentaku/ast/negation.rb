@@ -17,6 +17,9 @@ module Dentaku
       end
 
       def value(context = {})
+        decimal_context = Dentaku.current_decimal_context
+        return decimal_context.multiply(@node.value(context), -1) if decimal_context
+
         cast(@node.value(context)) * -1
       end
 

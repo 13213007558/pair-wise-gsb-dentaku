@@ -11,8 +11,8 @@ module Dentaku
         @calculator = calculator
       end
 
-      def evaluate(*args, &block)
-        @calculator.evaluate!(*args, &block)
+      def evaluate(expression, data = {}, options = nil, &block)
+        @calculator.evaluate!(expression, data, options, &block)
       end
     end
 
@@ -22,9 +22,9 @@ module Dentaku
         @block = block || ->(*) { :undefined }
       end
 
-      def evaluate(*args, &block)
+      def evaluate(expression, data = {}, options = nil, &block)
         handler = block || ->(_expr, ex) { @block.call(ex) }
-        @calculator.evaluate(*args, &handler)
+        @calculator.evaluate(expression, data, options, &handler)
       end
     end
 
@@ -62,6 +62,10 @@ module Dentaku
 
     private
 
+    def activate_decimal_context
+      calculator.send(:activate_configured_decimal_context)
+    end
+
     def self.dependency_cache
       @dep_cache ||= {}
     end
@@ -84,13 +88,19 @@ module Dentaku
     end
 
     def load_results(&block)
+      activate_decimal_context
       facts, _formulas = expressions.transform_keys { |k| normalized_name(k) }
                                     .transform_values { |v| calculator.ast(v) }
                                     .partition { |_, v| calculator.dependencies(v, nil).empty? }
 
       evaluated_facts = facts.to_h.each_with_object({}) do |(var_name, ast), h|
         with_rescues(var_name, h, block) do
-          h[var_name] = ast.is_a?(Array) ? ast.map(&:value) : ast.value
+          options = { decimal_context: calculator.current_decimal_context, share_decimal_context: true }
+          h[var_name] = if ast.is_a?(Array)
+            ast.map { |node| calculator.evaluate!(node, {}, options) }
+          else
+            calculator.evaluate!(ast, {}, options)
+          end
         end
       end
 
@@ -103,6 +113,7 @@ module Dentaku
           results[var_name] = evaluated_facts[normalized_name(var_name)] || evaluator.evaluate(
             expressions[var_name],
             context.merge(results),
+            { decimal_context: calculator.current_decimal_context, share_decimal_context: true },
             &expression_with_exception_handler(var_name, &block)
           ).tap { |res|
             res.assigned_to = var_name if res.respond_to?(:assigned_to=)

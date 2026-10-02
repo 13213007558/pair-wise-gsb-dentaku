@@ -42,6 +42,9 @@ module Dentaku
       end
 
       def value(context = {})
+        decimal_context = Dentaku.current_decimal_context
+        raise Dentaku::DecimalUnsupportedFunctionError.new(name) if decimal_context
+
         args = @args.flatten.map { |a|Dentaku::NumericParser.ensure_numeric!(a.value(context)) }
         self.class.call(*args)
       end

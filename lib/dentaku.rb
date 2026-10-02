@@ -1,5 +1,8 @@
 require "bigdecimal"
 require "concurrent"
+require "dentaku/exceptions"
+require "dentaku/numeric_parser"
+require "dentaku/decimal_context"
 require "dentaku/calculator"
 require "dentaku/version"
 
@@ -57,6 +60,18 @@ module Dentaku
 
   def self.calculator
     @calculator ||= Concurrent::ThreadLocalVar.new { Dentaku::Calculator.new }
+  end
+
+  def self.with_decimal_context(context)
+    previous = Thread.current[:dentaku_decimal_context]
+    Thread.current[:dentaku_decimal_context] = context
+    yield
+  ensure
+    Thread.current[:dentaku_decimal_context] = previous
+  end
+
+  def self.current_decimal_context
+    Thread.current[:dentaku_decimal_context]
   end
 end
 

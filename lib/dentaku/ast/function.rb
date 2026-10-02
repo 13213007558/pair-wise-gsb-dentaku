@@ -1,4 +1,5 @@
 require_relative 'node'
+require_relative '../decimal_functions'
 require_relative 'function_registry'
 
 module Dentaku
@@ -33,8 +34,10 @@ module Dentaku
         registry.get(name)
       end
 
-      def self.register(name, type, implementation, volatile: false)
-        registry.register(name, type, implementation, volatile: volatile)
+      def self.register(name, type, implementation, volatile: false, decimal: nil,
+                        decimal_implementation: nil)
+        registry.register(name, type, implementation, volatile: volatile, decimal: decimal,
+                          decimal_implementation: decimal_implementation)
       end
 
       def self.register_class(name, function_class)

@@ -29,10 +29,32 @@ module Dentaku
       end
 
       def value(context = {})
+        decimal_context = Dentaku.current_decimal_context
+        return decimal_calculate(context, decimal_context) if decimal_context
+
         calculate(left.value(context), right.value(context))
       end
 
       private
+
+      def decimal_calculate(context, decimal_context)
+        left_value = decimal_context.cast(left.value(context))
+        right_value = decimal_context.cast(right.value(context))
+        result = decimal_context.public_send(decimal_operation, left_value, right_value)
+        validate_result(result, left_value, right_value) unless decimal_context.signals.include?(:overflow)
+        result
+      end
+
+      def decimal_operation
+        {
+          :+ => :add,
+          :- => :subtract,
+          :* => :multiply,
+          :/ => :divide,
+          :% => :modulo,
+          :** => :power
+        }.fetch(operator)
+      end
 
       def calculate(left_value, right_value)
         l = cast(left_value)
@@ -82,7 +104,7 @@ module Dentaku
       end
 
       def decimal(val)
-        BigDecimal(val.to_s, Float::DIG + 1)
+        BigDecimal(val.to_s, 0)
       rescue # return as is, in case value can't be coerced to big decimal
         val
       end
@@ -154,10 +176,19 @@ module Dentaku
       end
 
       def value(context = {})
+        decimal_context = Dentaku.current_decimal_context
         left_value = left.value(context)
         right_value = right.value(context)
 
-        if left.type == :datetime || datetime?(left_value)
+        if decimal_context
+          if left.type == :datetime || datetime?(left_value)
+            return Dentaku::DateArithmetic.new(left_value).add(right_value)
+          else
+            left_value = decimal_context.cast(left_value)
+            right_value = decimal_context.cast(right_value)
+          end
+          return decimal_context.add(left_value, right_value)
+        elsif left.type == :datetime || datetime?(left_value)
           Dentaku::DateArithmetic.new(left_value).add(right_value)
         else
           calculate(left_value, right_value)
@@ -175,10 +206,19 @@ module Dentaku
       end
 
       def value(context = {})
+        decimal_context = Dentaku.current_decimal_context
         left_value = left.value(context)
         right_value = right.value(context)
 
-        if left.type == :datetime || datetime?(left_value)
+        if decimal_context
+          if left.type == :datetime || datetime?(left_value)
+            return Dentaku::DateArithmetic.new(left_value).sub(right_value)
+          else
+            left_value = decimal_context.cast(left_value)
+            right_value = decimal_context.cast(right_value)
+          end
+          return decimal_context.subtract(left_value, right_value)
+        elsif left.type == :datetime || datetime?(left_value)
           Dentaku::DateArithmetic.new(left_value).sub(right_value)
         else
           calculate(left_value, right_value)
@@ -202,6 +242,13 @@ module Dentaku
       end
 
       def value(context = {})
+        decimal_context = Dentaku.current_decimal_context
+        if decimal_context
+          r = right.value(context)
+          l = left.value(context)
+          return decimal_context.divide(l, r)
+        end
+
         r = decimal(cast(right.value(context)))
         raise Dentaku::ZeroDivisionError if r.zero?
 
@@ -231,6 +278,11 @@ module Dentaku
       end
 
       def value(context = {})
+        decimal_context = Dentaku.current_decimal_context
+        if decimal_context
+          return decimal_context.modulo(left.value(context), right.value(context))
+        end
+
         r = decimal(cast(right.value(context)))
         raise Dentaku::ZeroDivisionError if r.zero?
 
@@ -257,6 +309,9 @@ module Dentaku
       end
 
       def value(context = {})
+        decimal_context = Dentaku.current_decimal_context
+        return decimal_context.multiply(left.value(context), '0.01') if decimal_context
+
         cast(left.value(context)) * 0.01
       end
 
