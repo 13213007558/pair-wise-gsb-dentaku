@@ -17,6 +17,19 @@ module Dentaku
     calculator.value.evaluate!(expression, data, &block)
   end
 
+  def self.evaluate_with_gradient(expression, data = {}, variables = nil, &block)
+    calculator.value.evaluate_with_gradient(expression, data, variables, &block)
+  end
+
+  def self.evaluate_with_gradient!(expression, data = {}, variables = nil)
+    calculator.value.evaluate_with_gradient!(expression, data, variables)
+  end
+
+  class << self
+    alias_method :evaluate_gradient, :evaluate_with_gradient
+    alias_method :evaluate_gradient!, :evaluate_with_gradient!
+  end
+
   def self.enable_caching!
     enable_ast_cache!
     enable_dependency_order_cache!

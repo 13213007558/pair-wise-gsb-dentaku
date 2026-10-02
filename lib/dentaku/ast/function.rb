@@ -33,8 +33,12 @@ module Dentaku
         registry.get(name)
       end
 
-      def self.register(name, type, implementation, volatile: false)
-        registry.register(name, type, implementation, volatile: volatile)
+      def self.register(name, type, implementation, volatile: false, derivative: nil)
+        registry.register(name, type, implementation, volatile: volatile, derivative: derivative)
+      end
+
+      def self.register_derivative(name, rule)
+        registry.register_derivative(name, rule)
       end
 
       def self.register_class(name, function_class)

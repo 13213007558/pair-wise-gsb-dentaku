@@ -205,4 +205,43 @@ module Dentaku
   class ZeroDivisionError < ::ZeroDivisionError
     include Error
   end
+
+  class DifferentiationError < BaseError
+    attr_reader :reason, :meta
+
+    def initialize(reason, **meta)
+      @reason = reason
+      @meta = meta
+      super(default_message)
+    end
+
+    private_class_method :new
+
+    VALID_REASONS = %i[
+      unsupported_function unsupported_expression non_differentiable non_numeric_result
+    ].freeze
+
+    def self.for(reason, **meta)
+      unless VALID_REASONS.include?(reason)
+        raise ::ArgumentError, "Unhandled #{reason}"
+      end
+
+      new(reason, **meta)
+    end
+
+    private
+
+    def default_message
+      case reason
+      when :unsupported_function
+        "No derivative rule is registered for function #{meta[:function_name]}"
+      when :unsupported_expression
+        "#{meta[:expression]} cannot be differentiated"
+      when :non_differentiable
+        "#{meta[:name]} is not differentiable at #{meta[:point]}"
+      when :non_numeric_result
+        "Gradient evaluation requires a numeric result, but got #{meta[:actual].class}"
+      end
+    end
+  end
 end

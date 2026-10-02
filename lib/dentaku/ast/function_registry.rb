@@ -1,6 +1,11 @@
 module Dentaku
   module AST
     class FunctionRegistry < Hash
+      def initialize(*)
+        super
+        @derivatives = {}
+      end
+
       def get(name)
         name = function_name(name)
         return self[name] if has_key?(name)
@@ -8,7 +13,19 @@ module Dentaku
         nil
       end
 
-      def register(name, type, implementation, callback = nil, volatile: false)
+      def register_derivative(name, rule)
+        @derivatives[function_name(name)] = rule
+      end
+
+      def derivative(name)
+        name = function_name(name)
+        return @derivatives[name] if @derivatives.key?(name)
+        return default.derivative(name) unless key?(name)
+
+        nil
+      end
+
+      def register(name, type, implementation, callback = nil, volatile: false, derivative: nil)
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -97,7 +114,10 @@ module Dentaku
         function.callback = callback
         function.volatile = volatile
 
+        @derivatives.delete(function_name(name))
         self[function_name(name)] = function
+        register_derivative(name, derivative) if derivative
+        function
       end
 
       def register_class(name, function_class)

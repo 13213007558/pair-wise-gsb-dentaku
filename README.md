@@ -120,6 +120,55 @@ Dentaku('plums * 1.5', plums: 2)
 #=> 3.0
 ```
 
+GRADIENTS
+---------
+
+`evaluate_with_gradient!` evaluates a formula and returns both the ordinary
+result and first derivatives for requested numeric variables. Variables can be
+passed positionally or as `variables:`:
+
+```ruby
+calculator = Dentaku::Calculator.new
+result = calculator.evaluate_with_gradient!(
+  'x * x + y / x',
+  { x: 3.0, y: 4.0 },
+  [:x, :y]
+)
+
+result[:value]       #=> 10.333333333333334
+result[:gradient]    #=> { "x" => 5.555555555555555, "y" => 0.3333333333333333 }
+```
+
+The non-bang `evaluate_with_gradient` follows the normal `evaluate` error
+convention: Dentaku errors return `nil` (or are passed to the optional block)
+instead of being raised.
+
+Arithmetic, modulo away from integer-remainder boundaries, exponentiation,
+Ruby Math functions, `ABS`, `MIN`, `MAX`, `SUM`, `AVG`, `ROUND`, `ROUNDDOWN`,
+and `ROUNDUP` are supported. `IF` and `AND` / `OR` differentiate only the
+branch that is actually executed, so functions and variables on skipped
+branches are never called or required. Comparator boundaries, `ABS(0)`, tied
+`MIN` / `MAX`, and other non-differentiable points raise
+`Dentaku::DifferentiationError`.
+
+Register a custom derivative separately from the function body. A scalar
+function receives its argument values; a multivariate function returns one
+coefficient per argument, and an array function returns one coefficient per
+array element:
+
+```ruby
+calculator.add_function(:cube, :numeric, ->(x) { x ** 3 })
+calculator.add_derivative(:cube, ->(x) { 3 * x ** 2 })
+
+calculator.evaluate_with_gradient!('cube(x)', { x: 2.0 }, [:x])
+#=> { :value => 8.0, :gradient => { "x" => 12.0 } }
+```
+
+If a numeric custom function is encountered and no derivative has been
+registered, Dentaku executes the function normally once and then raises
+`Dentaku::DifferentiationError`. It never silently substitutes a finite
+difference approximation.
+
 PERFORMANCE
 -----------
 

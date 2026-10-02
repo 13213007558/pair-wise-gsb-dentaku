@@ -5,6 +5,7 @@ require 'dentaku/flat_hash'
 require 'dentaku/parser'
 require 'dentaku/string_casing'
 require 'dentaku/token'
+require 'dentaku/gradient_evaluator'
 
 module Dentaku
   class Calculator
@@ -34,21 +35,45 @@ module Dentaku
       @aliases || Dentaku.aliases
     end
 
-    def self.add_function(name, type, body, callback = nil, volatile: false)
-      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile)
+    def self.add_function(name, type, body, callback = nil, volatile: false, derivative: nil)
+      Dentaku::AST::FunctionRegistry.default.register(
+        name, type, body, callback, volatile: volatile, derivative: derivative
+      )
+    end
+
+    def self.add_derivative(name, rule)
+      Dentaku::AST::FunctionRegistry.default.register_derivative(name, rule)
     end
 
     def self.add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each do |(name, type, body, callback, volatile, derivative)|
+        add_function(
+          name, type, body, callback,
+          volatile: !!volatile, derivative: derivative
+        )
+      end
     end
 
-    def add_function(name, type, body, callback = nil, volatile: false)
-      @function_registry.register(name, type, body, callback, volatile: volatile)
+    def add_function(name, type, body, callback = nil, volatile: false, derivative: nil)
+      @function_registry.register(
+        name, type, body, callback,
+        volatile: volatile, derivative: derivative
+      )
+      self
+    end
+
+    def add_derivative(name, rule)
+      @function_registry.register_derivative(name, rule)
       self
     end
 
     def add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each do |(name, type, body, callback, volatile, derivative)|
+        add_function(
+          name, type, body, callback,
+          volatile: !!volatile, derivative: derivative
+        )
+      end
       self
     end
 
@@ -89,8 +114,67 @@ module Dentaku
       end
     end
 
+    def evaluate_with_gradient(expression, data = {}, *variable_positional, variables: nil, &block)
+      evaluate_gradient_array(
+        expression,
+        data,
+        gradient_variables(variables || variable_positional.first),
+        false,
+        &block
+      )
+    end
+
+    def evaluate_with_gradient!(expression, data = {}, *variable_positional, variables: nil)
+      evaluate_gradient_array(
+        expression,
+        data,
+        gradient_variables(variables || variable_positional.first),
+        true
+      )
+    end
+
+    alias_method :evaluate_gradient, :evaluate_with_gradient
+    alias_method :evaluate_gradient!, :evaluate_with_gradient!
+
     private def evaluate_array!(expression, data = {}, &block)
       expression.map { |e| evaluate!(e, data, &block) }
+    end
+
+    private def gradient_variables(variables)
+      selected = Array(variables)
+      raise ::ArgumentError, "variables must not be empty" if selected.empty?
+
+      selected
+    end
+
+    private def evaluate_gradient_array(expression, data, variables, strict, &block)
+      if expression.is_a?(Array)
+        return expression.map do |item|
+          evaluate_gradient_array(item, data, variables, strict)
+        end
+      end
+
+      evaluate_gradient_once(expression, data, variables, strict)
+    rescue Dentaku::Error => error
+      raise if strict
+      return block.call(expression, error) if block_given?
+
+      nil
+    end
+
+    private def evaluate_gradient_once(expression, data, variables, strict)
+      context = evaluation_context(data, strict ? :strict : :permissive)
+
+      store(context) do
+        node = ast(expression)
+        value, gradient = GradientEvaluator.new(
+          memory,
+          variables.map { |name| standardize_case(name.to_s) },
+          @function_registry
+        ).evaluate(node)
+
+        GradientResult.new(value, gradient)
+      end
     end
 
     def solve!(expression_hash)
