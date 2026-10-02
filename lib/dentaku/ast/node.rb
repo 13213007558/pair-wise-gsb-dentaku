@@ -40,6 +40,10 @@ module Dentaku
         self.class.name.to_s.split("::").last.upcase
       end
 
+      def side_effect?(_context = nil)
+        false
+      end
+
       private
 
       def static_mode?(context)

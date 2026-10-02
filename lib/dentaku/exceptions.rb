@@ -18,6 +18,16 @@ module Dentaku
     end
   end
 
+  class VariableResolutionError < BaseError
+    attr_reader :variable_name, :node
+
+    def initialize(variable_name, cause, node = nil)
+      @variable_name = variable_name
+      @node = node
+      super("failed to resolve variable #{variable_name}: #{cause.message}")
+    end
+  end
+
   class MathDomainError < BaseError
     attr_reader :function_name, :args
 

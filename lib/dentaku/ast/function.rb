@@ -17,6 +17,10 @@ module Dentaku
         visitor.visit_function(self)
       end
 
+      def side_effect?(context = nil)
+        self.class.respond_to?(:implementation) || args.any? { |arg| arg.side_effect?(context) }
+      end
+
       def dependencies(context = {})
         @args.each_with_index
              .flat_map { |a, _| a.dependencies(context) }

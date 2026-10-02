@@ -84,6 +84,12 @@ module Dentaku
         visitor.visit_case(self)
       end
 
+      def side_effect?(context = nil)
+        switch.side_effect?(context) ||
+          conditions.any? { |condition| condition.side_effect?(context) } ||
+          (!@else.nil? && @else.side_effect?(context))
+      end
+
       private
 
       # pruning evaluates the switch and each when-clause until one matches;

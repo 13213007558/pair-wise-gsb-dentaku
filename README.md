@@ -199,6 +199,29 @@ identifier on a branch that is not taken will not be reported; use
 Context keys prefixed with a double underscore (e.g. `__evaluation_mode`)
 are reserved for internal use.
 
+SUSPENDABLE CALCULATION SESSIONS
+
+When variables must be fetched from another service lazily, a calculation can
+be started without all inputs. `start_session` evaluates the expression in
+order and returns a pending session with the next variable required:
+
+```ruby
+session = calculator.start_session('IF(ready, total * fee, backup_fee)')
+session.pending?             #=> true
+session.required_variables   #=> ["ready"]
+session.resume!(ready: true) #=> still pending, now needs "total"
+session.resume!(total: 100).result
+```
+
+`IF`, function/operator `AND`, and function/operator `OR` short-circuit while
+the suspended calculation is running, so variables on branches that are not
+selected are never requested. Resuming a calculation continues the same call
+stack; custom functions that already ran are not called again. Passing `nil`
+binds that value and is distinct from an absent variable. A `Proc` value that
+raises is wrapped in `Dentaku::VariableResolutionError`. Completed and failed
+sessions reject another `resume!`; sessions copy the calculator memory at start
+and do not share mutable hashes or arrays with one another.
+
 BUILT-IN OPERATORS AND FUNCTIONS
 ---------------------------------
 

@@ -35,6 +35,8 @@ module Dentaku
       end
 
       def value(context = {})
+        return resumable_value(context) if resumable_session?(context)
+
         left_value = begin
           left.value(context)
         rescue UnboundVariableError => unbound
@@ -57,6 +59,43 @@ module Dentaku
 
       private
 
+      def resumable_session?(context)
+        context.key?(Dentaku::CalculationSession::SESSION_KEY)
+      end
+
+      def resumable_value(context)
+        session = context.fetch(Dentaku::CalculationSession::SESSION_KEY)
+        left_fiber, left_outcome = session.probe(left, context)
+
+        if left_fiber.alive?
+          if prunable_without_side_effect?(right, context)
+            right_fiber, right_outcome = session.try_probe(right, context)
+
+            if right_fiber && !right_fiber.alive? && decisive?(right_outcome)
+              return right_outcome
+            end
+          else
+            right_fiber = nil
+          end
+
+          left_value = session.await_probe(left_fiber, left_outcome)
+          return left_value if decisive?(left_value)
+
+          if right_fiber&.alive?
+            session.await_probe(right_fiber, right_outcome)
+          elsif right_fiber.nil?
+            right.value(context)
+          else
+            right_outcome
+          end
+        else
+          return left_outcome if decisive?(left_outcome)
+
+          right_fiber, right_outcome = session.probe(right, context)
+          session.await_probe(right_fiber, right_outcome)
+        end
+      end
+
       # static dependency check: this runs at parse time, and evaluating
       # short-circuit guards here would execute user functions (#197)
       def valid_node?(node)
@@ -67,6 +106,10 @@ module Dentaku
       # result, regardless of the other operand
       def decisive?(operand_value)
         raise NotImplementedError
+      end
+
+      def prunable_without_side_effect?(node, context)
+        !node.send(:side_effect?, context) && node.dependencies(context).empty?
       end
     end
 

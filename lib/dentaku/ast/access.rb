@@ -51,6 +51,10 @@ module Dentaku
         visitor.visit_access(self)
       end
 
+      def side_effect?(context = nil)
+        structure.side_effect?(context) || index.side_effect?(context)
+      end
+
       private
 
       def compute_pure?

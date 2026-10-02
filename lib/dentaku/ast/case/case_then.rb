@@ -31,6 +31,10 @@ module Dentaku
         visitor.visit_then(self)
       end
 
+      def side_effect?(context = nil)
+        @node.side_effect?(context)
+      end
+
       private
 
       def compute_pure?

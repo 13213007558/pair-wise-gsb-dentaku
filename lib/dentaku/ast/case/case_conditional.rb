@@ -34,6 +34,10 @@ module Dentaku
         visitor.visit_case_conditional(self)
       end
 
+      def side_effect?(context = nil)
+        @when.side_effect?(context) || @then.side_effect?(context)
+      end
+
       private
 
       def compute_pure?

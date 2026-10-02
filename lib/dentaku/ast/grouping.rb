@@ -15,6 +15,10 @@ module Dentaku
         @node.type
       end
 
+      def side_effect?(context = nil)
+        @node.side_effect?(context)
+      end
+
       def dependencies(context = {})
         @node.dependencies(context)
       end

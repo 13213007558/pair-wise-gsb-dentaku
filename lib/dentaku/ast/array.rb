@@ -34,6 +34,10 @@ module Dentaku
         visitor.visit_array(self)
       end
 
+      def side_effect?(context = nil)
+        @elements.any? { |element| element.side_effect?(context) }
+      end
+
       private
 
       def compute_pure?

@@ -1,4 +1,5 @@
 require_relative '../exceptions'
+require 'fiber'
 require 'dentaku/string_casing'
 
 module Dentaku
@@ -13,6 +14,8 @@ module Dentaku
       end
 
       def value(context = {})
+        return resumable_value(context) if resumable?(context)
+
         v = context.fetch(identifier) do
           raise UnboundVariableError.new([identifier]),
                 "no value provided for variables: #{identifier}"
@@ -30,6 +33,27 @@ module Dentaku
         end
       end
 
+      def resumable_value(context)
+        Fiber.yield(identifier) unless context.key?(identifier)
+
+        value = context.fetch(identifier)
+
+        case value
+        when Node
+          resolved = value.value(context)
+          context[identifier] = resolved if Dentaku.cache_identifier?
+          resolved
+        when Proc
+          begin
+            value.call
+          rescue StandardError => error
+            raise VariableResolutionError.new(identifier, error, self)
+          end
+        else
+          value
+        end
+      end
+
       def dependencies(context = {})
         context.key?(identifier) ? dependencies_of(context[identifier], context) : [identifier]
       end
@@ -43,6 +67,14 @@ module Dentaku
       end
 
       private
+
+      def resumable?(context)
+        context.key?(Dentaku::CalculationSession::SESSION_KEY)
+      end
+
+      def side_effect?(context = nil)
+        context&.key?(identifier) && context[identifier].is_a?(Proc)
+      end
 
       def dependencies_of(node, context)
         node.respond_to?(:dependencies) ? node.dependencies(context) : []

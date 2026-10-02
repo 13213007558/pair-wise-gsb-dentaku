@@ -1,4 +1,5 @@
 require 'dentaku/bulk_expression_solver'
+require 'dentaku/calculation_session'
 require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
@@ -92,6 +93,20 @@ module Dentaku
     private def evaluate_array!(expression, data = {}, &block)
       expression.map { |e| evaluate!(e, data, &block) }
     end
+
+    def start_session(expression, data = {})
+      CalculationSession.start!(self, expression, data)
+    end
+    alias_method :session!, :start_session
+    alias_method :start_session!, :start_session
+    alias_method :evaluate_session!, :start_session
+
+    def session(expression, data = {})
+      start_session(expression, data)
+    rescue Dentaku::Error => error
+      CalculationSession.failed(self, expression, error)
+    end
+    alias_method :evaluate_session, :session
 
     def solve!(expression_hash)
       BulkExpressionSolver.new(expression_hash, self).solve!

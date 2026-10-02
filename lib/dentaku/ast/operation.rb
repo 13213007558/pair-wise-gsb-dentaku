@@ -30,6 +30,10 @@ module Dentaku
         visitor.visit_operation(self)
       end
 
+      def side_effect?(context = nil)
+        [left, right].compact.any? { |node| node.side_effect?(context) }
+      end
+
       def display_operator
         operator.to_s
       end

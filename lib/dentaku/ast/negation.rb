@@ -44,6 +44,10 @@ module Dentaku
         visitor.visit_negation(self)
       end
 
+      def side_effect?(context = nil)
+        @node.side_effect?(context)
+      end
+
       private
 
       # bypasses Operation's binary initialize, so left/right are unset
