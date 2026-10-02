@@ -282,6 +282,51 @@ be evaluated (e.g. raise `ZeroDivisionError`).  The non-bang `solve` method will
 find as many solutions as possible and return the symbol `:undefined` for the
 problem formulas.
 
+#### Calculator.solve_simultaneous! / Calculator.solve_simultaneous
+
+Ordinary `solve!` rejects cycles. When a set of quota-like formulas really is
+simultaneous -- e.g. `a = 0.2 * b + base` together with
+`b = 0.5 * a + extra` -- explicitly opt in to simultaneous solving. Each
+dependency cycle is solved as a numeric linear system using exact arithmetic
+(integers stay integers, decimal literals such as `0.2` are rationalized
+instead of becoming binary floats), and every result is substituted back into
+the original formulas before it is returned.
+
+Variables outside the cycles are evaluated with the normal ordering rules
+first and then supplied to the systems. Linearity is proven from the formula
+structure (never by sampling values): multiplication is allowed only when one
+side is independent of the cycle's unknowns and division only when the divisor
+is. A unique solution returns the same plain hash `solve!` would.
+
+```ruby
+calc = Dentaku::Calculator.new
+calc.store(base: 10, extra: 3)
+calc.solve_simultaneous!(
+  a: "0.2 * b + base",
+  b: "0.5 * a + extra"
+)
+#=> {a: (106/9), b: (80/9)}   # Rational: the exact solution
+```
+
+When the equations do not pin every unknown, a `Dentaku::SimultaneousSolution`
+family is returned. It exposes `status`, `free_variables`, and `to_h(bindings)`
+to instantiate a member of the family:
+
+```ruby
+family = calc.solve_simultaneous!(a: "b", b: "a")
+family.status          #=> :family
+family.free_variables  #=> ["a"]
+family.to_h(a: 5)      #=> {"a" => 5, "b" => 5}
+```
+
+Contradictory systems (e.g. `a = a + 1`) raise
+`Dentaku::InconsistentSystemError`, which names the formulas participating in
+the contradiction. Non-linear feedback -- e.g. `a * b` inside a cycle -- raises
+`Dentaku::NonLinearEquationError` with `formula` and `operator` identifying the
+exact spot; simultaneous solving never falls back to iterating until the values
+stop changing. The non-bang `solve_simultaneous` follows the same convention as
+`solve` and reports failed members as `:undefined` (or your handler's value).
+
 INLINE COMMENTS
 ---------------------------------
 

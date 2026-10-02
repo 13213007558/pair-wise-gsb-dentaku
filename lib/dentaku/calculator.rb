@@ -101,6 +101,21 @@ module Dentaku
       BulkExpressionSolver.new(expression_hash, self).solve(&block)
     end
 
+    # Explicit opt-in simultaneous solving: dependency cycles are not rejected
+    # but solved as numeric linear systems. Every solution is substituted back
+    # into the original formulas. Returns a Dentaku::SimultaneousSolution when
+    # free parameters remain (a = b, b = a) and the usual plain result hash
+    # when the solution is unique. Contradictory cycles raise
+    # Dentaku::InconsistentSystemError and non-linear feedback raises
+    # Dentaku::NonLinearEquationError naming the responsible formula.
+    def solve_simultaneous!(expression_hash)
+      BulkExpressionSolver.new(expression_hash, self).solve!(simultaneous: true)
+    end
+
+    def solve_simultaneous(expression_hash, &block)
+      BulkExpressionSolver.new(expression_hash, self).solve(simultaneous: true, &block)
+    end
+
     def dependencies(expression, context = {})
       # dup inside the block: `store` now restores in place, so the caller
       # needs its own copy of the merged context rather than the live memory

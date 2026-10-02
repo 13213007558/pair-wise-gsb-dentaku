@@ -1,5 +1,20 @@
 # Change Log
 
+## [Unreleased]
+- add an explicit simultaneous-solving mode for numeric affine dependency
+  cycles. `Calculator#solve_simultaneous!` / `#solve_simultaneous` keep the
+  ordinary `solve!` behavior (cycles raise `TSort::Cyclic`) unchanged while
+  solving equations such as `a = 0.2 * b + base`, `b = 0.5 * a + extra` as a
+  linear system. Linearity is decided structurally (multiplication needs one
+  unknown-independent side; division needs an unknown-independent divisor),
+  arithmetic is exact with Rational/BigDecimal so integer and decimal
+  constants do not drift, and results distinguish a unique solution, a
+  contradictory system (`Dentaku::InconsistentSystemError`), and a family
+  with free parameters (`Dentaku::SimultaneousSolution`). Non-linear feedback
+  raises `Dentaku::NonLinearEquationError` naming the responsible formula and
+  operator; every solution is verified by substitution into the original
+  formulas.
+
 ## [v4.0.2] 2026-08-02
 - the 4.0.1 guard against arithmetic that rejects a well-typed operand only
   worked on Ruby 3.4+. Ruby 3.2 and 3.3 do not raise for an oversized

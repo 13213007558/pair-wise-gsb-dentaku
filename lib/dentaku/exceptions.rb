@@ -205,4 +205,60 @@ module Dentaku
   class ZeroDivisionError < ::ZeroDivisionError
     include Error
   end
+
+  # Raised in simultaneous-solve mode when a formula inside a dependency
+  # cycle cannot be represented as a numeric affine equation (the only kind
+  # of cycle this mode knows how to solve). +formula+ names the top-level
+  # equation that contains the offending feedback; +operator+ (when known)
+  # identifies the multiplication/division/... that closes a non-linear
+  # dependency on an unknown in the cycle.
+  class NonLinearEquationError < BaseError
+    attr_reader :formula, :operator, :node
+
+    def initialize(formula:, operator: nil, node: nil, message: nil)
+      @formula = formula
+      @operator = operator
+      @node = node
+      super(message || default_message)
+    end
+
+    private
+
+    def default_message
+      location = operator ? "#{operator} involving an unknown in the cycle" : "an unknown in the cycle"
+      "formula '#{formula}' contains non-linear feedback (#{location}); simultaneous solving only supports numeric affine equations"
+    end
+  end
+
+  # Raised in simultaneous-solve mode when a cycle of affine equations is
+  # inconsistent (rank deficient in a contradictory way, e.g. a = a + 1).
+  # +formulas+ are the equations that participate in the contradiction.
+  class InconsistentSystemError < BaseError
+    attr_reader :formulas
+
+    def initialize(formulas:, message: nil)
+      @formulas = Array(formulas)
+      super(message || default_message)
+    end
+
+    private
+
+    def default_message
+      "simultaneous equations #{@formulas.map { |f| "'#{f}'" }.join(', ')} are contradictory and have no solution"
+    end
+  end
+
+  # Raised if a solution produced by the simultaneous solver fails to satisfy
+  # the original formulas when substituted back. This is an internal safety
+  # check rather than a user-facing condition.
+  class SolutionVerificationError < BaseError
+    attr_reader :formula, :expected, :actual
+
+    def initialize(formula:, expected:, actual:)
+      @formula = formula
+      @expected = expected
+      @actual = actual
+      super("solution for '#{formula}' did not verify: expected #{expected}, got #{actual}")
+    end
+  end
 end
