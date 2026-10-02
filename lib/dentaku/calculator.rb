@@ -8,13 +8,15 @@ require 'dentaku/token'
 
 module Dentaku
   class Calculator
+    DECIMAL_CONTEXT_KEY = :__decimal_context
+
     include StringCasing
     attr_reader :result, :memory, :tokenizer, :case_sensitive,
                 :nested_data_support, :ast_cache, :raw_date_literals
 
     def initialize(case_sensitive: false, aliases: nil, nested_data_support: true,
                    raw_date_literals: true, ast_cache: {},
-                   cache_ast: nil, cache_dependency_order: nil)
+                   cache_ast: nil, cache_dependency_order: nil, decimal_context: nil)
       clear
       @tokenizer = Tokenizer.new
       @case_sensitive = case_sensitive
@@ -25,6 +27,7 @@ module Dentaku
       @cache_ast = cache_ast
       @cache_dependency_order = cache_dependency_order
       @disable_ast_cache = false
+      @decimal_context = decimal_context
       @function_registry = Dentaku::AST::FunctionRegistry.new
     end
 
@@ -34,21 +37,31 @@ module Dentaku
       @aliases || Dentaku.aliases
     end
 
-    def self.add_function(name, type, body, callback = nil, volatile: false)
-      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile)
+    def self.add_function(name, type, body, callback = nil, volatile: false, decimal: false)
+      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile, decimal: decimal)
     end
 
     def self.add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each do |function|
+        name, type, body, callback = function
+        add_function(name, type, body, callback,
+                     volatile: function.length >= 5 ? !!function[4] : false,
+                     decimal: function.length >= 6 ? !!function[5] : false)
+      end
     end
 
-    def add_function(name, type, body, callback = nil, volatile: false)
-      @function_registry.register(name, type, body, callback, volatile: volatile)
+    def add_function(name, type, body, callback = nil, volatile: false, decimal: false)
+      @function_registry.register(name, type, body, callback, volatile: volatile, decimal: decimal)
       self
     end
 
     def add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each do |function|
+        name, type, body, callback = function
+        add_function(name, type, body, callback,
+                     volatile: function.length >= 5 ? !!function[4] : false,
+                     decimal: function.length >= 6 ? !!function[5] : false)
+      end
       self
     end
 
@@ -59,24 +72,26 @@ module Dentaku
       @disable_ast_cache = false
     end
 
-    def evaluate(expression, data = {}, &block)
+    def evaluate(expression, data = {}, options = nil, &block)
       context = evaluation_context(data, :permissive)
-      return evaluate_array(expression, context, &block) if expression.is_a?(Array)
+      decimal_context = decimal_context_from(options)
+      return evaluate_array(expression, context, options, &block) if expression.is_a?(Array)
 
-      evaluate!(expression, context)
+      evaluate!(expression, context, options)
     rescue Dentaku::Error => ex
       block.call(expression, ex) if block_given?
     end
 
-    private def evaluate_array(expression, data = {}, &block)
-      expression.map { |e| evaluate(e, data, &block) }
+    private def evaluate_array(expression, data = {}, options = nil, &block)
+      expression.map { |e| evaluate(e, data, options, &block) }
     end
 
-    def evaluate!(expression, data = {}, &block)
+    def evaluate!(expression, data = {}, options = nil, &block)
       context = evaluation_context(data, :strict)
-      return evaluate_array!(expression, context, &block) if expression.is_a? Array
+      decimal_context = decimal_context_from(options)
+      return evaluate_array!(expression, context, options, &block) if expression.is_a? Array
 
-      store(context) do
+      result = store(context) do
         node = ast(expression)
         unbound = node.dependencies(memory)
 
@@ -85,12 +100,13 @@ module Dentaku
                 "no value provided for variables: #{unbound.uniq.join(', ')}"
         end
 
-        node.value(memory)
+        evaluate_node(node, decimal_context)
       end
+      result
     end
 
-    private def evaluate_array!(expression, data = {}, &block)
-      expression.map { |e| evaluate!(e, data, &block) }
+    private def evaluate_array!(expression, data = {}, options = nil, &block)
+      expression.map { |e| evaluate!(e, data, options, &block) }
     end
 
     def solve!(expression_hash)
@@ -149,6 +165,14 @@ module Dentaku
       }
     end
 
+    def ast_value(node)
+      decimal_context = @decimal_context
+      return node.map { |child| ast_value(child) } if node.is_a?(::Array)
+      return evaluate_node(node, decimal_context) if decimal_context
+
+      node.value
+    end
+
     def load_cache(ast_cache)
       @ast_cache = ast_cache
     end
@@ -168,6 +192,31 @@ module Dentaku
 
     def evaluation_context(data, evaluation_mode)
       data.key?(:__evaluation_mode) ? data : data.merge(__evaluation_mode: evaluation_mode)
+    end
+
+    private def decimal_context_from(options)
+      return @decimal_context if options.nil?
+
+      unless options.is_a?(::Hash)
+        raise ::ArgumentError, 'evaluation options must be a Hash'
+      end
+
+      options.fetch(:decimal_context, @decimal_context)
+    end
+
+    private def evaluate_node(node, decimal_context)
+      return node.value(memory) unless decimal_context
+
+      execution = decimal_context.begin_execution
+      previous_execution = memory[DECIMAL_CONTEXT_KEY]
+      had_execution = memory.key?(DECIMAL_CONTEXT_KEY)
+      memory[DECIMAL_CONTEXT_KEY] = execution
+      value = node.value(memory)
+      had_execution ? memory[DECIMAL_CONTEXT_KEY] = previous_execution : memory.delete(DECIMAL_CONTEXT_KEY)
+      DecimalContext::Result.new(value, execution.signals)
+    rescue
+      had_execution ? memory[DECIMAL_CONTEXT_KEY] = previous_execution : memory.delete(DECIMAL_CONTEXT_KEY)
+      raise
     end
 
     def store(key_or_hash, value = nil)

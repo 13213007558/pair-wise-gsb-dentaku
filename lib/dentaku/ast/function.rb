@@ -29,12 +29,20 @@ module Dentaku
         false
       end
 
+      def self.decimal?
+        false
+      end
+
+      def self.decimal_arity
+        arity
+      end
+
       def self.get(name)
         registry.get(name)
       end
 
-      def self.register(name, type, implementation, volatile: false)
-        registry.register(name, type, implementation, volatile: volatile)
+      def self.register(name, type, implementation, volatile: false, decimal: false)
+        registry.register(name, type, implementation, volatile: volatile, decimal: decimal)
       end
 
       def self.register_class(name, function_class)

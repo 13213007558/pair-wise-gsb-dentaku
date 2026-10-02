@@ -29,12 +29,19 @@ module Dentaku
       end
 
       def value(context = {})
-        calculate(left.value(context), right.value(context))
+        calculate(left.value(context), right.value(context), context)
       end
 
       private
 
-      def calculate(left_value, right_value)
+      def decimal_execution(context)
+        context[Dentaku::Calculator::DECIMAL_CONTEXT_KEY]
+      end
+
+      def calculate(left_value, right_value, context = {})
+        execution = decimal_execution(context)
+        return decimal_calculate(execution, left_value, right_value) if execution
+
         l = cast(left_value)
         r = cast(right_value)
 
@@ -55,6 +62,22 @@ module Dentaku
         end
 
         validate_result(result, l, r)
+      end
+
+      def decimal_calculate(execution, left_value, right_value)
+        execution.public_send(decimal_operator, left_value, right_value)
+      end
+
+      def decimal_operator
+        case operator
+        when :+ then :add
+        when :- then :subtract
+        when :* then :multiply
+        when :/ then :divide
+        when :% then :modulo
+        when :** then :power
+        else operator
+        end
       end
 
       # Not every Ruby rejects an operation it cannot carry out. Before 3.4,
@@ -160,7 +183,7 @@ module Dentaku
         if left.type == :datetime || datetime?(left_value)
           Dentaku::DateArithmetic.new(left_value).add(right_value)
         else
-          calculate(left_value, right_value)
+          calculate(left_value, right_value, context)
         end
       end
     end
@@ -181,7 +204,7 @@ module Dentaku
         if left.type == :datetime || datetime?(left_value)
           Dentaku::DateArithmetic.new(left_value).sub(right_value)
         else
-          calculate(left_value, right_value)
+          calculate(left_value, right_value, context)
         end
       end
     end
@@ -202,8 +225,12 @@ module Dentaku
       end
 
       def value(context = {})
-        r = decimal(cast(right.value(context)))
-        raise Dentaku::ZeroDivisionError if r.zero?
+        right_value = right.value(context)
+        execution = decimal_execution(context)
+        return execution.divide(left.value(context), right_value) if execution
+
+        r = decimal(cast(right_value))
+        raise Dentaku::ZeroDivisionError.new if r.zero?
 
         cast(cast(left.value(context)) / r)
       end
@@ -231,8 +258,12 @@ module Dentaku
       end
 
       def value(context = {})
-        r = decimal(cast(right.value(context)))
-        raise Dentaku::ZeroDivisionError if r.zero?
+        right_value = right.value(context)
+        execution = decimal_execution(context)
+        return execution.modulo(left.value(context), right_value) if execution
+
+        r = decimal(cast(right_value))
+        raise Dentaku::ZeroDivisionError.new if r.zero?
 
         cast(cast(left.value(context)) % r)
       end
@@ -257,7 +288,9 @@ module Dentaku
       end
 
       def value(context = {})
-        cast(left.value(context)) * 0.01
+        value = left.value(context)
+        execution = decimal_execution(context)
+        execution ? execution.percent(value) : cast(value) * 0.01
       end
 
       def operator
@@ -274,6 +307,10 @@ module Dentaku
     end
 
     class Exponentiation < Arithmetic
+      def decimal_operator
+        :power
+      end
+
       def operator
         :**
       end

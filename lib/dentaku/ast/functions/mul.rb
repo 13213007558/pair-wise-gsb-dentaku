@@ -9,4 +9,4 @@ Dentaku::AST::Function.register(:mul, :numeric, ->(*args) {
   end
 
   args.flatten.map { |arg| Dentaku::NumericParser.ensure_numeric!(arg) }.reduce(1, :*)
-})
+}, decimal: :builtin)

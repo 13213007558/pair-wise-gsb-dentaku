@@ -90,7 +90,7 @@ module Dentaku
 
       evaluated_facts = facts.to_h.each_with_object({}) do |(var_name, ast), h|
         with_rescues(var_name, h, block) do
-          h[var_name] = ast.is_a?(Array) ? ast.map(&:value) : ast.value
+          h[var_name] = calculator.ast_value(ast)
         end
       end
 

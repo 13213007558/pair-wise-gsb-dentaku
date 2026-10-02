@@ -17,7 +17,9 @@ module Dentaku
       end
 
       def value(context = {})
-        cast(@node.value(context)) * -1
+        value = @node.value(context)
+        execution = context[Dentaku::Calculator::DECIMAL_CONTEXT_KEY]
+        execution ? execution.negate(value) : cast(value) * -1
       end
 
       def type

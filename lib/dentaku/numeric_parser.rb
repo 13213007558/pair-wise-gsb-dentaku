@@ -25,6 +25,10 @@ module Dentaku
         raw =~ /(\.|e|E)/ ? BigDecimal(raw, Float::DIG + 1) : raw.to_i
       end
 
+      def parse_exact_numeric_string(raw)
+        raw =~ /(\.|e|E)/ ? BigDecimal(raw) : raw.to_i
+      end
+
       def parse_hexadecimal_string(raw)
         raw[2..-1].to_i(16)
       end

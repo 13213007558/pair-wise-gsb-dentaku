@@ -204,5 +204,11 @@ module Dentaku
 
   class ZeroDivisionError < ::ZeroDivisionError
     include Error
+    attr_reader :signals
+
+    def initialize(signals = [])
+      @signals = signals
+      super('division by zero')
+    end
   end
 end

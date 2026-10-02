@@ -8,7 +8,7 @@ module Dentaku
         nil
       end
 
-      def register(name, type, implementation, callback = nil, volatile: false)
+      def register(name, type, implementation, callback = nil, volatile: false, decimal: false)
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -65,21 +65,62 @@ module Dentaku
             @volatile
           end
 
+          def self.decimal=(decimal)
+            @decimal = decimal
+          end
+
+          def self.decimal?
+            @decimal
+          end
+
+          def self.decimal_arity=(decimal_arity)
+            @decimal_arity = decimal_arity
+          end
+
+          def self.decimal_arity
+            @decimal_arity
+          end
+
           def self.arity
-            @implementation.arity < 0 ? nil : @implementation.arity
+            arity = decimal? == true ? decimal_arity : @implementation.arity
+            arity < 0 ? nil : arity
           end
 
           def self.min_param_count
-            @implementation.parameters.select { |type, _name| type == :req }.count
+            parameters = decimal? == true ? decimal_parameters : @implementation.parameters
+            parameters.select { |type, _name| type == :req }.count
           end
 
           def self.max_param_count
-            @implementation.parameters.select { |type, _name| type == :rest }.any? ? Float::INFINITY : @implementation.parameters.count
+            parameters = decimal? == true ? decimal_parameters : @implementation.parameters
+            parameters.select { |type, _name| type == :rest }.any? ? Float::INFINITY : parameters.count
+          end
+
+          def self.decimal_parameters
+            @implementation.parameters.drop(decimal_arity_offset)
+          end
+
+          def self.decimal_arity_offset
+            1
           end
 
           def value(context = {})
             args = @args.map { |a| a.value(context) }
-            self.class.implementation.call(*args)
+            decimal_execution = context[Dentaku::Calculator::DECIMAL_CONTEXT_KEY]
+            if decimal_execution
+              function_name = name.to_s.downcase.to_sym
+              if self.class.decimal? == :builtin
+                DecimalFunctions.call(function_name, decimal_execution, args)
+              elsif self.class.decimal? == true
+                self.class.implementation.call(decimal_execution, *args)
+              elsif %i[logical string].include?(self.class.type)
+                self.class.implementation.call(*args)
+              else
+                raise Dentaku::DecimalUnsupportedError.new(name)
+              end
+            else
+              self.class.implementation.call(*args)
+            end
           end
 
           def type
@@ -96,6 +137,8 @@ module Dentaku
         function.implementation = implementation
         function.callback = callback
         function.volatile = volatile
+        function.decimal = decimal
+        function.decimal_arity = function.implementation.arity - (decimal == true ? 1 : 0)
 
         self[function_name(name)] = function
       end

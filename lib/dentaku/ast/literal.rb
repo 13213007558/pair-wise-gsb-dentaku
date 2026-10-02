@@ -9,8 +9,17 @@ module Dentaku
         @type  = token.category
       end
 
-      def value(*)
-        @value
+      def value(context = {})
+        execution = context[Dentaku::Calculator::DECIMAL_CONTEXT_KEY]
+        return @value unless execution && @type == :numeric
+
+        value = case @value
+                when ::Integer, ::BigDecimal
+                  execution.decimal(@value)
+                else
+                  execution.decimal(@token.raw_value.to_s)
+                end
+        execution.fit(value)
       end
 
       def dependencies(*)

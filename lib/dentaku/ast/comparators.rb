@@ -16,8 +16,8 @@ module Dentaku
       end
 
       def value(context = {})
-        l = validate_value(cast(left.value(context)))
-        r = validate_value(cast(right.value(context)))
+        l = validate_value(cast(left.value(context), context))
+        r = validate_value(cast(right.value(context), context))
 
         l.public_send(operator, r)
       rescue ::ArgumentError, ::TypeError => e
@@ -26,7 +26,15 @@ module Dentaku
 
       private
 
-      def cast(val)
+      def cast(val, context = {})
+        execution = context[Dentaku::Calculator::DECIMAL_CONTEXT_KEY]
+        if execution
+          numeric_string = val.is_a?(::String) && Dentaku::NumericParser.match(val)
+          numeric_value = val.is_a?(::Integer) || val.is_a?(::BigDecimal)
+          return execution.fit(execution.decimal(val)) if numeric_string || numeric_value
+          return val
+        end
+
         return val unless val.is_a?(::String)
 
         Dentaku::NumericParser.parse_string(val) || val

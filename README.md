@@ -120,6 +120,39 @@ Dentaku('plums * 1.5', plums: 2)
 #=> 3.0
 ```
 
+DECIMAL CONTEXT
+---------------
+
+Optional decimal evaluation keeps a precision, rounding mode, and signal
+policy scoped to one calculation. It does not mutate process-wide BigDecimal
+settings, so calculations with different contexts can be interleaved.
+
+```ruby
+context = Dentaku::DecimalContext.new(
+  precision: 6,
+  rounding: :half_even,
+  traps: { division_by_zero: true, overflow: true, inexact: false }
+)
+
+result = calculator.evaluate!('1 / 3', {}, { decimal_context: context })
+result.value   #=> 0.333333e0
+result.signals #=> [:inexact]
+```
+
+Supported rounding modes are `:up`, `:down`, `:ceiling`, `:floor`,
+`:half_up`, `:half_down`, and `:half_even`. Each trap can be enabled to raise
+its corresponding Dentaku decimal exception or disabled to record the signal
+and return the BigDecimal result, including Infinity for division by zero or
+overflow.
+
+Numeric literals, Integer values, BigDecimal values, numeric strings, the
+four arithmetic operations, modulo, exponentiation, and `ROUND`, `ROUNDUP`,
+`ROUNDDOWN`, `ABS`, `MIN`, `MAX`, `SUM`, `MUL`, and `AVG` follow the context.
+Functions backed by floating-point Ruby Math explicitly raise
+`Dentaku::DecimalUnsupportedError`. Custom numeric functions must opt in with
+`decimal: true`; their implementation then receives the execution object as
+its first argument.
+
 PERFORMANCE
 -----------
 

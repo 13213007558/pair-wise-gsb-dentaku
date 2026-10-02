@@ -1,6 +1,8 @@
 require "bigdecimal"
 require "concurrent"
+require "delegate"
 require "dentaku/calculator"
+require "dentaku/decimal_context"
 require "dentaku/version"
 
 module Dentaku
@@ -9,12 +11,12 @@ module Dentaku
   @enable_identifier_caching = false
   @aliases = {}
 
-  def self.evaluate(expression, data = {}, &block)
-    calculator.value.evaluate(expression, data, &block)
+  def self.evaluate(expression, data = {}, options = nil, &block)
+    calculator.value.evaluate(expression, data, options, &block)
   end
 
-  def self.evaluate!(expression, data = {}, &block)
-    calculator.value.evaluate!(expression, data, &block)
+  def self.evaluate!(expression, data = {}, options = nil, &block)
+    calculator.value.evaluate!(expression, data, options, &block)
   end
 
   def self.enable_caching!

@@ -26,7 +26,14 @@ module Dentaku
         when Proc
           v.call
         else
-          v
+          execution = context[Dentaku::Calculator::DECIMAL_CONTEXT_KEY]
+          if execution && (v.is_a?(::Integer) || v.is_a?(::BigDecimal))
+            converted = execution.fit(execution.decimal(v))
+            context[identifier] = converted if Dentaku.cache_identifier?
+            converted
+          else
+            v
+          end
         end
       end
 
