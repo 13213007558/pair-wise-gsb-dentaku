@@ -282,6 +282,38 @@ be evaluated (e.g. raise `ZeroDivisionError`).  The non-bang `solve` method will
 find as many solutions as possible and return the symbol `:undefined` for the
 problem formulas.
 
+#### Calculator.session
+
+When some variables have to be fetched from other services, collecting every
+input up front is wasteful. `session` evaluates as far as it can, suspends on
+the first variable that has no value yet, and lets you resume with more data
+later:
+
+```ruby
+session = calc.session("price * quantity + tax", price: 10)
+session.suspended?        #=> true
+session.missing_variables #=> ["quantity"]
+session.resume(quantity: 3)
+session.missing_variables #=> ["tax"]
+session.resume(tax: 2)
+session.completed?        #=> true
+session.result            #=> 32
+```
+
+`IF`, `AND`, and `OR` keep their usual short-circuit behavior, so branches
+that are not selected never request variables. Custom functions and variable
+callbacks that already ran are memoized per session and are not re-run when
+the session resumes, so the result matches a single `evaluate!` with all
+inputs given at once.
+
+An explicit `nil` is a valid value; a missing value suspends the session; a
+variable callback that raises fails the session with
+`Dentaku::ResolutionError` (the original exception is its `#cause`). Other
+evaluation errors (e.g. `ZeroDivisionError`) also fail the session. Resuming
+a completed or failed session raises `Dentaku::SessionStateError`. Each
+session evaluates against its own copy of the calculator's memory, so
+independent sessions never share mutable state.
+
 INLINE COMMENTS
 ---------------------------------
 

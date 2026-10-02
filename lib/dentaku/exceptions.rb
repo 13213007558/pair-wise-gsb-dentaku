@@ -18,6 +18,31 @@ module Dentaku
     end
   end
 
+  # Raised inside an EvaluationSession when a variable was provided but its
+  # value could not be produced (a Proc callback raised, or a stored formula
+  # failed to evaluate). Distinct from "no value provided" (which suspends)
+  # and from an explicit nil (which is a valid value). The original exception
+  # is available via #cause.
+  class ResolutionError < BaseError
+    attr_reader :identifier
+
+    def initialize(identifier)
+      @identifier = identifier
+      super("failed to resolve variable: #{identifier}")
+    end
+  end
+
+  # Raised when resuming an EvaluationSession that already completed or
+  # failed; a finished session cannot be evaluated further.
+  class SessionStateError < BaseError
+    attr_reader :state
+
+    def initialize(state)
+      @state = state
+      super("cannot resume a #{state} evaluation session")
+    end
+  end
+
   class MathDomainError < BaseError
     attr_reader :function_name, :args
 

@@ -1,3 +1,5 @@
+require 'dentaku/evaluation_session'
+
 module Dentaku
   module AST
     class FunctionRegistry < Hash
@@ -78,9 +80,24 @@ module Dentaku
           end
 
           def value(context = {})
+            session = context[EvaluationSession::CONTEXT_KEY]
+            cache = session.node_cache if session && !self.class.volatile?
+
+            if cache
+              # already computed in an earlier run of this session: replay
+              # the memoized value instead of re-running user code
+              return cache[self] if cache.key?(self)
+              return cache[self] = invoke(context)
+            end
+
+            invoke(context)
+          end
+
+          def invoke(context)
             args = @args.map { |a| a.value(context) }
             self.class.implementation.call(*args)
           end
+          private :invoke
 
           def type
             self.class.type

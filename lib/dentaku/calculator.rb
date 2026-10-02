@@ -1,5 +1,6 @@
 require 'dentaku/bulk_expression_solver'
 require 'dentaku/dependency_resolver'
+require 'dentaku/evaluation_session'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
 require 'dentaku/parser'
@@ -99,6 +100,13 @@ module Dentaku
 
     def solve(expression_hash, &block)
       BulkExpressionSolver.new(expression_hash, self).solve(&block)
+    end
+
+    # Starts a suspendable evaluation of a single expression and runs it
+    # until it either completes, fails, or suspends on a variable that has
+    # no value yet. See Dentaku::EvaluationSession for the resume protocol.
+    def session(expression, data = {})
+      EvaluationSession.new(self, expression, data)
     end
 
     def dependencies(expression, context = {})
