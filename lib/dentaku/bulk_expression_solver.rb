@@ -2,6 +2,7 @@ require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
 require 'dentaku/parser'
+require 'dentaku/simultaneous_equation_solver'
 require 'dentaku/tokenizer'
 
 module Dentaku
@@ -28,17 +29,27 @@ module Dentaku
       end
     end
 
-    def initialize(expressions, calculator)
+    def initialize(expressions, calculator, options = {})
       @expression_hash = FlatHash.from_hash(expressions)
       @calculator = calculator
+      @simultaneous = options.fetch(:simultaneous, false)
     end
 
-    def solve!
+    def solve!(options = nil)
+      options ||= {}
+      return simultaneous_solver(options, true).solve! if simultaneous?(options)
+
       @evaluator = StrictEvaluator.new(calculator)
       solve(&raise_exception_handler)
     end
 
-    def solve(&block)
+    def solve(options = {}, &block)
+      if options.is_a?(Proc)
+        block = options
+        options = {}
+      end
+      return simultaneous_solver(options, false).solve(&block) if simultaneous?(options)
+
       @evaluator ||= PermissiveEvaluator.new(calculator, block)
       error_handler = block || return_undefined_handler
       results = load_results(&error_handler)
@@ -67,6 +78,18 @@ module Dentaku
     end
 
     attr_reader :expression_hash, :calculator, :evaluator
+
+    def simultaneous?(options)
+      options.fetch(:simultaneous, @simultaneous)
+    end
+
+    def simultaneous_solver(options, strict = false)
+      SimultaneousEquationSolver.new(
+        expression_hash,
+        calculator,
+        strict: strict
+      )
+    end
 
     def return_undefined_handler
       ->(*) { :undefined }

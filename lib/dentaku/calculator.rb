@@ -93,12 +93,12 @@ module Dentaku
       expression.map { |e| evaluate!(e, data, &block) }
     end
 
-    def solve!(expression_hash)
-      BulkExpressionSolver.new(expression_hash, self).solve!
+    def solve!(expression_hash, options = {})
+      BulkExpressionSolver.new(expression_hash, self, options).solve!
     end
 
-    def solve(expression_hash, &block)
-      BulkExpressionSolver.new(expression_hash, self).solve(&block)
+    def solve(expression_hash, options = {}, &block)
+      BulkExpressionSolver.new(expression_hash, self, options).solve(&block)
     end
 
     def dependencies(expression, context = {})

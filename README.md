@@ -282,6 +282,33 @@ be evaluated (e.g. raise `ZeroDivisionError`).  The non-bang `solve` method will
 find as many solutions as possible and return the symbol `:undefined` for the
 problem formulas.
 
+##### Simultaneous equations
+
+Ordinary solving remains topological and still rejects dependency cycles.
+Enable simultaneous solving explicitly for numeric affine cycles:
+
+```ruby
+result = calc.solve!({
+  a: "0.2 * b + base",
+  b: "0.5 * a + extra",
+  base: 1,
+  extra: 1
+}, simultaneous: true)
+
+result.status
+result.solution
+result.verified?
+```
+
+The result status is `:unique`, `:no_solution`, or
+`:free_parameter_solution`. Free-variable solutions use exact
+`Dentaku::AffineExpression` values and can be sampled with `result.values(b: 2)`.
+Variables outside a cycle are evaluated with the normal dependency rules
+first. Multiplication is affine only when one side does not depend on a cycle
+unknown; division is affine only when the divisor does not depend on one.
+Non-affine feedback raises `Dentaku::NonlinearEquationError` and identifies the
+formula instead of iterating until an approximate answer converges.
+
 INLINE COMMENTS
 ---------------------------------
 
