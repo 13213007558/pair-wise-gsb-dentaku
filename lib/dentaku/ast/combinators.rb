@@ -4,14 +4,14 @@ require 'dentaku/exceptions'
 module Dentaku
   module AST
     class Combinator < Operation
-      def initialize(*)
-        super
+      def initialize(*, validate_types: true)
+        super(*)
 
-        unless valid_node?(left)
+        if validate_types && !valid_node?(left)
           raise NodeError.new(:logical, left.type, :left),
                 "#{self.class} requires logical operands"
         end
-        unless valid_node?(right)
+        if validate_types && !valid_node?(right)
           raise NodeError.new(:logical, right.type, :right),
                 "#{self.class} requires logical operands"
         end

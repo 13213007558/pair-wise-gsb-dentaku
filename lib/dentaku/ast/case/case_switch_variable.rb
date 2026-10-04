@@ -31,6 +31,10 @@ module Dentaku
         visitor.visit_switch(self)
       end
 
+      def child_nodes
+        [@node]
+      end
+
       private
 
       def compute_pure?

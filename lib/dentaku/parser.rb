@@ -37,11 +37,15 @@ module Dentaku
       @arities           = options.fetch(:arities, [])
       @function_registry = options.fetch(:function_registry, nil)
       @case_sensitive    = options.fetch(:case_sensitive, false)
+      @enable_callbacks  = options.fetch(:enable_callbacks, true)
+      @validate_types    = options.fetch(:validate_types, true)
       @skip_indices      = []
+      @operation_tokens  = []
     end
 
     def consume(count = 2)
       operation = operations.pop
+      consumed_operation_token = @operation_tokens.pop
       fail! :invalid_statement if operation.nil?
 
       output_size = output.length
@@ -66,10 +70,12 @@ module Dentaku
       else
         fail! :invalid_statement if output_size < args_size
         args = Array.new(args_size) { output.pop }.reverse
-        output.push operation.new(*args)
+        output.push operation.new(*args, **construction_options(operation))
       end
 
-      if operation.respond_to?(:callback) && !operation.callback.nil?
+      attach_source(operation, output.last, consumed_operation_token)
+
+      if @enable_callbacks && operation.respond_to?(:callback) && !operation.callback.nil?
         operation.callback.call(args)
       end
     rescue ::ArgumentError => e
@@ -126,7 +132,7 @@ module Dentaku
       when :operator, :comparator, :combinator
         handle_operator(token, lookahead)
       when :null
-        output << AST::Nil.new
+        output << AST::Nil.new(token)
       when :function
         handle_function(token)
       when :case
@@ -150,6 +156,7 @@ module Dentaku
         consume while operations.last && operations.last < AST::Operation && op_class.precedence <= operations.last.precedence
       end
       operations.push op_class
+      @operation_tokens.push token
     end
 
     def handle_function(token)
@@ -157,6 +164,7 @@ module Dentaku
       fail! :undefined_function, function_name: token.value if func.nil?
       arities.push 0
       operations.push func
+      @operation_tokens.push token
     end
 
     def handle_case(token)
@@ -168,6 +176,7 @@ module Dentaku
       when :open
         # Start a new CASE context.
         operations.push AST::Case
+        @operation_tokens.push token
         arities.push(0)
 
       when :close
@@ -175,6 +184,7 @@ module Dentaku
         if operations[token_index] == AST::CaseThen
           consume_until(AST::Case)
           operations.push(AST::CaseConditional)
+          @operation_tokens.push token
           consume(2)
           arities[-1] += 1
         elsif operations[token_index] == AST::CaseElse
@@ -189,6 +199,7 @@ module Dentaku
           # Close out previous WHEN/THEN pair.
           consume_until([AST::CaseWhen, AST::Case])
           operations.push(AST::CaseConditional)
+          @operation_tokens.push token
           consume(2)
           arities[-1] += 1
         elsif operations[token_index].nil? ||
@@ -197,24 +208,29 @@ module Dentaku
           # switch expression, then finalize the switch variable.
           consume_until(AST::Case)
           operations.push(AST::CaseSwitchVariable)
+          @operation_tokens.push token
           consume
         end
         operations.push(AST::CaseWhen)
+        @operation_tokens.push token
 
       when :then
         if operations[token_index] == AST::CaseWhen
           consume_until([AST::CaseThen, AST::Case])
         end
         operations.push(AST::CaseThen)
+        @operation_tokens.push token
 
       when :else
         if operations[token_index] == AST::CaseThen
           consume_until(AST::Case)
           operations.push(AST::CaseConditional)
+          @operation_tokens.push token
           consume(2)
           arities[-1] += 1
         end
         operations.push(AST::CaseElse)
+        @operation_tokens.push token
 
       else
         fail! :unknown_case_token, token_name: token.value
@@ -235,6 +251,7 @@ module Dentaku
       case token.value
       when :lbracket
         operations.push AST::Access
+        @operation_tokens.push token
 
       when :rbracket
         consume while operations.any? && operations.last != AST::Access
@@ -247,6 +264,7 @@ module Dentaku
       case token.value
       when :array_start
         operations.push AST::Array
+        @operation_tokens.push token
         arities.push 0
 
       when :array_end
@@ -267,11 +285,13 @@ module Dentaku
           consume(0)
         else
           operations.push AST::Grouping
+          @operation_tokens.push token
         end
 
       when :close
         consume while operations.any? && operations.last != AST::Grouping
         lparen = operations.pop
+        @operation_tokens.pop
         fail! :unbalanced_parenthesis, token: token unless lparen == AST::Grouping
         if operations.last && operations.last < AST::Function
           consume(arities.pop.succ)
@@ -289,6 +309,33 @@ module Dentaku
 
     def fail!(reason, **meta)
       raise ParseError.for(reason, **meta)
+    end
+
+    def attach_source(operation, node, operation_token = @operation_tokens.last)
+      return unless node.respond_to?(:source_token=)
+
+      return if operation_token.nil?
+      return unless attachable_operation?(operation)
+
+      node.source_token = operation_token
+    end
+
+    def construction_options(operation)
+      if operation.respond_to?(:new)
+        params = operation.instance_method(:initialize).parameters
+        return { validate_types: false } if !@validate_types && params.any? { |type, name| type == :key && name == :validate_types }
+      end
+
+      {}
+    end
+
+    def attachable_operation?(operation)
+      operation == AST::Access ||
+        operation == AST::Array ||
+        operation.ancestors.include?(AST::Function) ||
+        operation.ancestors.include?(AST::Operation)
+    rescue TypeError
+      false
     end
   end
 end

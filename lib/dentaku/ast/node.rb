@@ -23,6 +23,24 @@ module Dentaku
         []
       end
 
+      def source_token
+        nil
+      end
+
+      def child_nodes
+        []
+      end
+
+      def source_range
+        ranges = [source_token&.source_range] + (child_nodes || []).map(&:source_range)
+        ranges.compact!
+        return nil if ranges.empty?
+
+        start = ranges.min_by(&:start_offset).start_pos
+        finish = ranges.max_by(&:end_offset).end_pos
+        Dentaku::SourceRange.new(start, finish)
+      end
+
       # whether this subtree may be evaluated during dependency resolution
       # without running volatile user code; a property of the parsed AST,
       # computed once and memoized

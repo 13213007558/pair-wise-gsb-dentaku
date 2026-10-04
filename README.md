@@ -383,6 +383,59 @@ argument behaves the same whatever type is declared -- which is why an
 incorrect type can go unnoticed for a long time.  Declare the type your lambda
 actually returns.
 
+### Static type checking
+
+For validation before a task runs, pass variable type declarations to
+`static_check` (aliased as `check` and `type_check`).  Type checking parses the
+formula but never calls custom function implementations.  Supported scalar
+types are `:numeric`, `:string`, `:logical`, `:datetime`, and `:nil`.  Use
+`:unknown` for a value that should be ignored, not treated as an error, and
+arrays as `{ array: :numeric }` or nested arrays such as
+`{ array: { array: :numeric } }`.
+
+```ruby
+c = Dentaku::Calculator.new
+result = c.static_check('IF(ready, due_at + 1, due_at + "x")',
+                        ready: :logical, due_at: :datetime)
+result.valid?                 #=> false
+result.type                   #=> [:datetime, :unknown]
+result.errors.first[:actual]  #=> :string
+result.errors.first[:location]
+#=> { start: { offset: 31, line: 1, column: 32 },
+#     end: { offset: 34, line: 1, column: 35 } }
+```
+
+Offsets are zero-based byte offsets into the original formula; line and column
+are one-based character positions.  A branch that current runtime values would
+not execute is still checked, and differing IF result branches form a union:
+`IF(ready, 1, "one")` has type `[:numeric, :string]`.
+
+Custom functions can declare one or more signatures.  A concrete argument that
+matches no declaration reports a no-match error; a concrete union argument that
+could match more than one declaration reports true ambiguity.  A completely
+unknown argument remains unknown and does not produce either error.
+
+```ruby
+c.add_function(
+  :lookup,
+  :numeric,
+  ->(value) { value },
+  signatures: [
+    { params: [:numeric], return: :string },
+    { params: [:string], return: :numeric }
+  ]
+)
+
+c.static_check('LOOKUP(true)').errors.first[:message]   #=> no matching signature
+c.static_check('LOOKUP(missing)').type                 #=> [:string, :numeric]
+```
+
+The checker also descends into array literals, index access, enum collection
+elements, and enum local variables.  For example, with
+`numbers: { array: :numeric }`, the local `item` in
+`MAP(numbers, item, item + "x")` is numeric, so the string operand is reported
+at its original location.
+
 Dentaku assumes registered functions are pure (see DEPENDENCY ANALYSIS AND
 SHORT-CIRCUITING above).  A function that reads external state, performs
 I/O, or returns different values across calls must be declared volatile so

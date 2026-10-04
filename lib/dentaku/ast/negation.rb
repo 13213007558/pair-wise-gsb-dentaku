@@ -3,10 +3,10 @@ module Dentaku
     class Negation < Arithmetic
       attr_reader :node
 
-      def initialize(node)
+      def initialize(node, validate_types: true)
         @node = node
 
-        unless valid_node?(node)
+        if validate_types && !valid_node?(node)
           raise NodeError.new(:numeric, node.type, :node),
                 "#{self.class} requires numeric operands"
         end

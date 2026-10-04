@@ -84,6 +84,10 @@ module Dentaku
         visitor.visit_case(self)
       end
 
+      def child_nodes
+        [@switch] + @conditions + [@else].compact
+      end
+
       private
 
       # pruning evaluates the switch and each when-clause until one matches;

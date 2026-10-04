@@ -9,6 +9,7 @@ module Dentaku
 
       def initialize(token, options = {})
         @case_sensitive = options.fetch(:case_sensitive, false)
+        @token = token
         @identifier = standardize_case(token.value)
       end
 
@@ -40,6 +41,10 @@ module Dentaku
 
       def to_s
         identifier.to_s
+      end
+
+      def source_token
+        @token
       end
 
       private

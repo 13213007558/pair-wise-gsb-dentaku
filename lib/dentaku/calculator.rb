@@ -4,6 +4,7 @@ require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
 require 'dentaku/parser'
 require 'dentaku/string_casing'
+require 'dentaku/type_checker'
 require 'dentaku/token'
 
 module Dentaku
@@ -34,21 +35,21 @@ module Dentaku
       @aliases || Dentaku.aliases
     end
 
-    def self.add_function(name, type, body, callback = nil, volatile: false)
-      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile)
+    def self.add_function(name, type, body, callback = nil, volatile: false, signatures: nil)
+      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile, signatures: signatures)
     end
 
     def self.add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each { |(name, type, body, callback, volatile, signatures)| add_function(name, type, body, callback, volatile: !!volatile, signatures: signatures) }
     end
 
-    def add_function(name, type, body, callback = nil, volatile: false)
-      @function_registry.register(name, type, body, callback, volatile: volatile)
+    def add_function(name, type, body, callback = nil, volatile: false, signatures: nil)
+      @function_registry.register(name, type, body, callback, volatile: volatile, signatures: signatures)
       self
     end
 
     def add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each { |(name, type, body, callback, volatile, signatures)| add_function(name, type, body, callback, volatile: !!volatile, signatures: signatures) }
       self
     end
 
@@ -130,23 +131,53 @@ module Dentaku
       end
     end
 
+    def static_check(expression, variable_types = {})
+      node = parse_for_static_check(expression)
+      TypeChecker.new(calculator: self, case_sensitive: case_sensitive).check(node, variable_types)
+    end
+    alias_method :check_types, :static_check
+    alias_method :type_check, :static_check
+    alias_method :check, :static_check
+
+    def static_check!(expression, variable_types = {})
+      result = static_check(expression, variable_types)
+      raise TypeCheckError, result.conflicts unless result.valid?
+
+      result
+    end
+
     def ast(expression)
       return expression if expression.is_a?(AST::Node)
       return expression.map { |e| ast(e) } if expression.is_a? Array
 
       @ast_cache.fetch(expression) {
-        options = {
-          aliases: aliases,
-          case_sensitive: case_sensitive,
-          function_registry: @function_registry,
-          raw_date_literals: raw_date_literals
-        }
-
-        tokens = tokenizer.tokenize(expression, options)
-        Parser.new(tokens, options).parse.tap do |node|
+        parse_expression(expression).tap do |node|
           @ast_cache[expression] = node if cache_ast?
         end
       }
+    end
+
+    private def parse_expression(expression, parser_options = {})
+      options = {
+        aliases: aliases,
+        case_sensitive: case_sensitive,
+        function_registry: @function_registry,
+        raw_date_literals: raw_date_literals
+      }.merge(parser_options)
+
+      tokens = tokenizer.tokenize(expression, options)
+      Parser.new(tokens, options).parse
+    end
+
+    private def parse_for_static_check(expression)
+      case expression
+      when Dentaku::AST::Node
+        expression
+      when Array
+        expression.map { |item| parse_for_static_check(item) }
+      else
+        parse_expression(expression, enable_callbacks: false, validate_types: false)
+      end
     end
 
     def load_cache(ast_cache)

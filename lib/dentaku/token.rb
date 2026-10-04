@@ -1,11 +1,14 @@
+require_relative 'source_position'
+
 module Dentaku
   class Token
-    attr_reader :category, :raw_value, :value
+    attr_reader :category, :raw_value, :value, :source_range
 
-    def initialize(category, value, raw_value = nil)
+    def initialize(category, value, raw_value = nil, source_range: nil)
       @category  = category
       @value     = value
       @raw_value = raw_value
+      @source_range = source_range
     end
 
     def to_s

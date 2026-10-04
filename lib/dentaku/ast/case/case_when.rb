@@ -35,6 +35,10 @@ module Dentaku
         'WHEN'
       end
 
+      def child_nodes
+        [@node]
+      end
+
       private
 
       # bypasses Operation's binary initialize, so left/right are unset

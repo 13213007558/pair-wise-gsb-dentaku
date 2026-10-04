@@ -21,6 +21,10 @@ module Dentaku
         visitor.visit_literal(self)
       end
 
+      def source_token
+        @token
+      end
+
       def quoted
         @token.raw_value || value.to_s
       end

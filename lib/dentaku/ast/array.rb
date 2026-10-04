@@ -27,11 +27,17 @@ module Dentaku
       end
 
       def type
-        nil
+        :array
       end
 
       def accept(visitor)
         visitor.visit_array(self)
+      end
+
+      attr_accessor :source_token
+
+      def child_nodes
+        @elements
       end
 
       private

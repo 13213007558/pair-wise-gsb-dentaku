@@ -19,6 +19,10 @@ module Dentaku
         @node.dependencies(context)
       end
 
+      def child_nodes
+        [@node]
+      end
+
       private
 
       def compute_pure?

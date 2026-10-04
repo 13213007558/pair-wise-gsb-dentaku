@@ -8,7 +8,7 @@ module Dentaku
         nil
       end
 
-      def register(name, type, implementation, callback = nil, volatile: false)
+      def register(name, type, implementation, callback = nil, volatile: false, signatures: nil)
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -47,6 +47,14 @@ module Dentaku
 
           def self.type
             @type
+          end
+
+          def self.signatures=(signatures)
+            @signatures = signatures
+          end
+
+          def self.signatures
+            @signatures
           end
 
           def self.callback=(callback)
@@ -96,16 +104,36 @@ module Dentaku
         function.implementation = implementation
         function.callback = callback
         function.volatile = volatile
+        function.signatures = signatures
 
         self[function_name(name)] = function
+        register_signatures(name, signatures) if signatures
+        function
       end
 
-      def register_class(name, function_class)
+      def register_class(name, function_class, signatures: nil)
         self[function_name(name)] = function_class
+        register_signatures(name, signatures) if signatures
+      end
+
+      def register_signatures(name, signatures)
+        @signatures ||= {}
+        @signatures[function_name(name)] = Array(signatures)
+      end
+
+      def get_signatures(name)
+        own = defined?(@signatures) && @signatures&.dig(function_name(name))
+        return own if own
+
+        default_signatures[function_name(name)]
       end
 
       def default
         self.class.default
+      end
+
+      def default_signatures
+        self.class.default.instance_variable_get(:@signatures) || {}
       end
 
       def self.default

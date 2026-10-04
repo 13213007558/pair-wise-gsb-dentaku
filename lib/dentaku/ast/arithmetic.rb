@@ -6,15 +6,15 @@ require 'bigdecimal/util'
 module Dentaku
   module AST
     class Arithmetic < Operation
-      def initialize(*)
-        super
+      def initialize(*, validate_types: true)
+        super(*)
 
-        unless valid_left?
+        if validate_types && !valid_left?
           raise NodeError.new(:incompatible, left.type, :left),
                 "#{self.class} requires operands that are numeric or compatible types, not #{left.type}"
         end
 
-        unless valid_right?
+        if validate_types && !valid_right?
           raise NodeError.new(:incompatible, right.type, :right),
                 "#{self.class} requires operands that are numeric or compatible types, not #{right.type}"
         end
@@ -243,10 +243,10 @@ module Dentaku
         1
       end
 
-      def initialize(child)
+      def initialize(child, validate_types: true)
         @left = child
 
-        unless valid_left?
+        if validate_types && !valid_left?
           raise NodeError.new(:numeric, left.type, :left),
                 "#{self.class} requires a numeric operand"
         end

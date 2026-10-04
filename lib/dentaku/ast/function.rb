@@ -22,11 +22,21 @@ module Dentaku
              .flat_map { |a, _| a.dependencies(context) }
       end
 
+      attr_accessor :source_token
+
+      def child_nodes
+        @args
+      end
+
       # volatile functions may not be evaluated during dependency
       # resolution; registry-generated classes override this per the
       # volatile: option passed at registration
       def self.volatile?
         false
+      end
+
+      def self.signatures
+        nil
       end
 
       def self.get(name)

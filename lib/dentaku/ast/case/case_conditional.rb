@@ -34,6 +34,10 @@ module Dentaku
         visitor.visit_case_conditional(self)
       end
 
+      def child_nodes
+        [@when, @then]
+      end
+
       private
 
       def compute_pure?

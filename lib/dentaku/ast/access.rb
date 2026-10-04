@@ -51,6 +51,12 @@ module Dentaku
         visitor.visit_access(self)
       end
 
+      attr_accessor :source_token
+
+      def child_nodes
+        [@structure, @index]
+      end
+
       private
 
       def compute_pure?

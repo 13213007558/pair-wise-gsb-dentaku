@@ -22,6 +22,10 @@ module Dentaku
         (left.dependencies(context) + right.dependencies(context)).uniq
       end
 
+      def child_nodes
+        [left, right].compact
+      end
+
       def self.right_associative?
         false
       end
