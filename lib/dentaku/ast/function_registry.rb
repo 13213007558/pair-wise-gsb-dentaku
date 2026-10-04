@@ -1,6 +1,12 @@
 module Dentaku
   module AST
     class FunctionRegistry < Hash
+      attr_reader :generation
+
+      def initialize
+        @generation = 0
+      end
+
       def get(name)
         name = function_name(name)
         return self[name] if has_key?(name)
@@ -9,6 +15,8 @@ module Dentaku
       end
 
       def register(name, type, implementation, callback = nil, volatile: false)
+        @generation += 1
+
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -78,6 +86,7 @@ module Dentaku
           end
 
           def value(context = {})
+            Dentaku::EvaluationTracker.context(context)&.function_volatile! if self.class.volatile?
             args = @args.map { |a| a.value(context) }
             self.class.implementation.call(*args)
           end

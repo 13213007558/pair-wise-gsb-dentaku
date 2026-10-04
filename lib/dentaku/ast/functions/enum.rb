@@ -37,11 +37,13 @@ module Dentaku
       private
 
       def mapped_value(expression, context, item_context)
-        expression.value(
-          context.merge(
-            FlatHash.from_hash_with_intermediates(item_context)
+        Dentaku::EvaluationTracker.locals(context, item_context.keys) do
+          expression.value(
+            context.merge(
+              FlatHash.from_hash_with_intermediates(item_context)
+            )
           )
-        )
+        end
       rescue => e
         raise e if context["__evaluation_mode"] == :strict
         nil

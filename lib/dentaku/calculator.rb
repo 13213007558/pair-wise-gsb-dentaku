@@ -1,4 +1,5 @@
 require 'dentaku/bulk_expression_solver'
+require 'dentaku/calculation_session'
 require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
@@ -10,7 +11,8 @@ module Dentaku
   class Calculator
     include StringCasing
     attr_reader :result, :memory, :tokenizer, :case_sensitive,
-                :nested_data_support, :ast_cache, :raw_date_literals
+                :nested_data_support, :ast_cache, :raw_date_literals,
+                :function_registry
 
     def initialize(case_sensitive: false, aliases: nil, nested_data_support: true,
                    raw_date_literals: true, ast_cache: {},
@@ -44,6 +46,7 @@ module Dentaku
 
     def add_function(name, type, body, callback = nil, volatile: false)
       @function_registry.register(name, type, body, callback, volatile: volatile)
+      clear_cache
       self
     end
 
@@ -100,6 +103,11 @@ module Dentaku
     def solve(expression_hash, &block)
       BulkExpressionSolver.new(expression_hash, self).solve(&block)
     end
+
+    def calculation_session(formulas = {}, inputs = {})
+      CalculationSession.new(self, formulas: formulas, inputs: inputs)
+    end
+    alias_method :session, :calculation_session
 
     def dependencies(expression, context = {})
       # dup inside the block: `store` now restores in place, so the caller

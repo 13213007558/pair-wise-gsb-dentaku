@@ -1,5 +1,14 @@
 # Change Log
 
+## Unreleased
+- add `Calculator#session` / `Calculator#calculation_session` for long-lived
+  incremental workbooks. Sessions cache values and errors together with the
+  dependencies actually read during evaluation, return only outputs changed by
+  an input update, switch `IF`/`CASE` subscriptions when conditions change,
+  invalidate on formula or custom-function version changes, rerun volatile
+  functions every round, and propagate errors when variables are deleted or
+  dynamic cycles appear or disappear.
+
 ## [v4.0.2] 2026-08-02
 - the 4.0.1 guard against arithmetic that rejects a well-typed operand only
   worked on Ruby 3.4+. Ruby 3.2 and 3.3 do not raise for an oversized

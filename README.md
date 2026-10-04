@@ -255,6 +255,31 @@ calc.dependencies("annual_income / 5")
 #### Calculator.solve! / Calculator.solve
 Have Dentaku figure out the order in which your formulas need to be evaluated.
 
+#### Calculator#session / Calculator#calculation_session
+
+For a long-lived workbook, create a calculation session. It keeps parsed
+formulas, values, errors, and the dependencies actually read during the most
+recent evaluation. Updating inputs returns only formulas whose values or error
+states changed.
+
+```ruby
+session = calc.session(
+  { tax: "income * rate", total: "income + tax" },
+  { income: 100, rate: 0.1, ignored: 0 }
+)
+
+session.results              #=> { tax: 10.0, total: 110.0 }
+session.update(ignored: 1)   #=> {}
+session.update(income: 200)  #=> { tax: 20.0, total: 220.0 }
+session.dependencies("tax") #=> ["income", "rate"]
+```
+
+Only the selected `IF` or `CASE` branch records value dependencies. When a
+condition changes, old branch subscriptions are removed and new subscriptions
+take effect immediately. Replacing a formula or re-registering a custom
+function invalidates affected cached results. Volatile functions execute once
+per recalculation round and are never served from a cached value.
+
 Pass in a hash of `{eventual_variable_name: "expression"}` to `solve!` and
 have Dentaku resolve dependencies (using `TSort`) for you.
 

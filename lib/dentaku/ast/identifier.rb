@@ -13,6 +13,8 @@ module Dentaku
       end
 
       def value(context = {})
+        Dentaku::EvaluationTracker.context(context)&.add_dependency(identifier)
+
         v = context.fetch(identifier) do
           raise UnboundVariableError.new([identifier]),
                 "no value provided for variables: #{identifier}"

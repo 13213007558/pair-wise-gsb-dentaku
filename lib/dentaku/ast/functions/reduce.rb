@@ -42,12 +42,14 @@ module Dentaku
         expression      = @args[3]
         initial_value   = @args[4] && @args[4].value(context)
 
-        collection.reduce(initial_value) do |memo, item|
-          expression.value(
-            context.merge(
-              FlatHash.from_hash_with_intermediates(memo_identifier => memo, item_identifier => item)
+        Dentaku::EvaluationTracker.locals(context, [memo_identifier, item_identifier]) do
+          collection.reduce(initial_value) do |memo, item|
+            expression.value(
+              context.merge(
+                FlatHash.from_hash_with_intermediates(memo_identifier => memo, item_identifier => item)
+              )
             )
-          )
+          end
         end
       end
 

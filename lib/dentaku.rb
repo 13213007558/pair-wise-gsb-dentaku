@@ -1,5 +1,6 @@
 require "bigdecimal"
 require "concurrent"
+require "dentaku/calculation_session"
 require "dentaku/calculator"
 require "dentaku/version"
 
