@@ -120,6 +120,58 @@ Dentaku('plums * 1.5', plums: 2)
 #=> 3.0
 ```
 
+BATCH (ARRAY) VALUES
+--------------------
+
+Arrays supplied as data are batch values. Operations and element-wise
+functions run once per position instead of re-invoking the formula for every
+row. Scalars broadcast, and arrays align on their trailing dimensions using
+standard broadcasting rules:
+
+```ruby
+Dentaku('price * discount',
+       price:    [[100], [200]],          # 2x1
+       discount: [[0.9, 0.8, 0.7]])       # 1x3
+#=> [[90.0, 80.0, 70.0], [180.0, 160.0, 140.0]]  # 2x3
+```
+
+Shape conflicts raise `Dentaku::ShapeError` before any side-effecting
+function runs. Functions declare whether they apply element-wise or to the
+whole array (`vector_mode: :elementwise` (the default) or `:array`, used by
+aggregates like SUM/AVG/MIN/MAX):
+
+```ruby
+calculator.add_function(:doubled, :numeric, ->(x) { x * 2 })
+calculator.add_function(:joined, :string, ->(values) { values.join('-') },
+                        nil, vector_mode: :array)
+```
+
+`IF` selects a branch independently for each element, so an unselected element
+never triggers division by zero or a function call on that side:
+
+```ruby
+Dentaku('IF(mask, price / divisor, 0)',
+       mask: [true, false, true],
+       price: [10, 20, 30], divisor: [2, 0, 3])
+#=> [5, 0, 10]
+```
+
+Errors at individual positions carry their index; other positions still
+produce values. Strict evaluation raises `Dentaku::BatchError` (with
+`partial_results` and `index_errors`), while non-bang evaluation returns the
+legal results with `nil` at the failed positions.
+
+Edge cases:
+
+- an empty dimension (`[]` or `[[], []]`) yields an empty result and
+  broadcasts against any aligned dimension;
+- a size-one axis (`1`) repeats to match the other side at every dimension;
+- nested, irregular (ragged) arrays align by outer member; irregular inner
+  arrays stay opaque and combine member by member.
+
+Array literals written in the expression (`{1, 2, 3}`) remain value
+collections with list semantics, distinct from data arrays.
+
 PERFORMANCE
 -----------
 

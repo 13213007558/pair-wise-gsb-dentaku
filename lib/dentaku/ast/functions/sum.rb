@@ -9,4 +9,4 @@ Dentaku::AST::Function.register(:sum, :numeric, ->(*args) {
   end
 
   args.flatten.map { |arg| Dentaku::NumericParser.ensure_numeric!(arg) }.reduce(0, :+)
-})
+}, vector_mode: :array)

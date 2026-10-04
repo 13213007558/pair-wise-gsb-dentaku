@@ -1,4 +1,7 @@
 require_relative './ast/node'
+require_relative './tensor'
+require_relative './vector'
+require_relative './ast/vectorizable'
 require_relative './ast/nil'
 require_relative './ast/datetime'
 require_relative './ast/numeric'

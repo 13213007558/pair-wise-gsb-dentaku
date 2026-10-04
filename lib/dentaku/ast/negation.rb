@@ -17,7 +17,18 @@ module Dentaku
       end
 
       def value(context = {})
-        cast(@node.value(context)) * -1
+        if Dentaku::Vector.positioned?(context)
+          cast(@node.value(context)) * -1
+        else
+          shape = Dentaku::Vector.infer_shape(@node, context)
+          if shape.empty?
+            cast(@node.value(context)) * -1
+          else
+            Dentaku::Vector.elementwise_ast([@node], shape, context) do |(scalar)|
+              cast(scalar) * -1
+            end
+          end
+        end
       end
 
       def type

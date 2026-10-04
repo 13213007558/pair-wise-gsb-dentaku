@@ -1,8 +1,11 @@
 require_relative './operation'
+require_relative './vectorizable'
 
 module Dentaku
   module AST
     class Comparator < Operation
+      include Vectorizable
+
       def self.precedence
         5
       end
@@ -16,12 +19,14 @@ module Dentaku
       end
 
       def value(context = {})
-        l = validate_value(cast(left.value(context)))
-        r = validate_value(cast(right.value(context)))
+        vectorize_binary(left, right, context) do |lhs, rhs|
+          l = validate_value(cast(lhs))
+          r = validate_value(cast(rhs))
 
-        l.public_send(operator, r)
-      rescue ::ArgumentError, ::TypeError => e
-        raise Dentaku::ArgumentError.for(:incompatible_type, actual: r, expected: l.class), e.message
+          l.public_send(operator, r)
+        rescue ::ArgumentError, ::TypeError => e
+          raise Dentaku::ArgumentError.for(:incompatible_type, actual: r, expected: l.class), e.message
+        end
       end
 
       private

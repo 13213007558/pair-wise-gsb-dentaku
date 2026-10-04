@@ -1,4 +1,5 @@
 require_relative "./node"
+require_relative "../vector"
 
 module Dentaku
   module AST
@@ -19,7 +20,14 @@ module Dentaku
       end
 
       def value(context = {})
-        @elements.map { |el| el.value(context) }
+        values = @elements.map { |el| el.value(context) }
+        if Dentaku::Vector.positioned?(context) && values.length == 1
+          values.first
+        elsif Dentaku::Vector.positioned?(context)
+          values[Dentaku::Vector.position(context) % values.length]
+        else
+          Dentaku::CollectionArray.new(values)
+        end
       end
 
       def dependencies(context = {})
@@ -32,6 +40,11 @@ module Dentaku
 
       def accept(visitor)
         visitor.visit_array(self)
+      end
+
+      # Literal arrays are value collections, not batches.
+      def tensor_shape(_context = {})
+        []
       end
 
       private

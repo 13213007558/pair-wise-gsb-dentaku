@@ -36,6 +36,13 @@ module Dentaku
         nil
       end
 
+      # Static batch shape of this node's value, without evaluating it.
+      # Returns [] for scalars and nodes whose shape is not statically known.
+      # Nodes override this; the default is conservative (scalar/unknown).
+      def tensor_shape(_context = {})
+        []
+      end
+
       def name
         self.class.name.to_s.split("::").last.upcase
       end

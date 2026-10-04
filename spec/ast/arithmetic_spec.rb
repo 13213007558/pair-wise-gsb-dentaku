@@ -62,8 +62,14 @@ describe Dentaku::AST::Arithmetic do
   end
 
   it 'performs arithmetic on arrays' do
-    expect(add(x, y, 'x' => [1], 'y' => [2])).to eq([1, 2])
-    expect(sub(x, y, 'x' => [1], 'y' => [2])).to eq([1])
+    # variable arrays are batch tensors: matching shapes combine position-wise
+    expect(add(x, y, 'x' => [1, 2], 'y' => [3, 4])).to eq([4, 6])
+    expect(sub(x, y, 'x' => [5, 4], 'y' => [3, 2])).to eq([2, 2])
+    # a scalar broadcasts across the array
+    expect(add(x, y, 'x' => [1, 2, 3], 'y' => 10)).to eq([11, 12, 13])
+    # literal arrays keep list semantics (concatenation/difference)
+    expect(Dentaku('{1} + {2}')).to eq([1, 2])
+    expect(Dentaku('{1, 2} - {2}')).to eq([1])
   end
 
   it 'performs date arithmetic' do
@@ -115,12 +121,13 @@ describe Dentaku::AST::Arithmetic do
     a = ['2017-01-01', '2017-01-02']
     b = ['2017-01-01']
 
-    expect(Dentaku('a - b', a: a, b: b)).to eq(['2017-01-02'])
+    # variable arrays broadcast position-wise; strings coerce to numbers
+    expect(Dentaku('a - b', a: ['20170102', '20170103'], b: 1)).to eq([20_170_101, 20_170_102])
   end
 
   it 'raises ArgumentError if given individually valid but incompatible arguments' do
     expect { add(one, date) }.to raise_error(Dentaku::ArgumentError)
-    expect { add(x, one, 'x' => [1]) }.to raise_error(Dentaku::ArgumentError)
+    expect { Dentaku!('x + y', x: [[1, 2]], y: [[[1, 2, 3]]]) }.to raise_error(Dentaku::ShapeError)
   end
 
   describe 'parse-time operand validation (#197)' do

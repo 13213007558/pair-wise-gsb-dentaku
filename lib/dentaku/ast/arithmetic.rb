@@ -1,11 +1,14 @@
 require_relative './operation'
 require_relative '../date_arithmetic'
+require_relative './vectorizable'
 require 'bigdecimal'
 require 'bigdecimal/util'
 
 module Dentaku
   module AST
     class Arithmetic < Operation
+      include Vectorizable
+
       def initialize(*)
         super
 
@@ -29,7 +32,7 @@ module Dentaku
       end
 
       def value(context = {})
-        calculate(left.value(context), right.value(context))
+        vectorize_binary(left, right, context) { |lhs, rhs| calculate(lhs, rhs) }
       end
 
       private
@@ -154,13 +157,12 @@ module Dentaku
       end
 
       def value(context = {})
-        left_value = left.value(context)
-        right_value = right.value(context)
-
-        if left.type == :datetime || datetime?(left_value)
-          Dentaku::DateArithmetic.new(left_value).add(right_value)
-        else
-          calculate(left_value, right_value)
+        vectorize_binary(left, right, context) do |lhs, rhs|
+          if left.type == :datetime || datetime?(lhs)
+            Dentaku::DateArithmetic.new(lhs).add(rhs)
+          else
+            calculate(lhs, rhs)
+          end
         end
       end
     end
@@ -175,13 +177,12 @@ module Dentaku
       end
 
       def value(context = {})
-        left_value = left.value(context)
-        right_value = right.value(context)
-
-        if left.type == :datetime || datetime?(left_value)
-          Dentaku::DateArithmetic.new(left_value).sub(right_value)
-        else
-          calculate(left_value, right_value)
+        vectorize_binary(left, right, context) do |lhs, rhs|
+          if left.type == :datetime || datetime?(lhs)
+            Dentaku::DateArithmetic.new(lhs).sub(rhs)
+          else
+            calculate(lhs, rhs)
+          end
         end
       end
     end
@@ -202,10 +203,12 @@ module Dentaku
       end
 
       def value(context = {})
-        r = decimal(cast(right.value(context)))
-        raise Dentaku::ZeroDivisionError if r.zero?
+        vectorize_binary(left, right, context) do |lhs, rhs|
+          r = decimal(cast(rhs))
+          raise Dentaku::ZeroDivisionError if r.zero?
 
-        cast(cast(left.value(context)) / r)
+          cast(cast(lhs) / r)
+        end
       end
 
       def self.precedence
@@ -231,10 +234,12 @@ module Dentaku
       end
 
       def value(context = {})
-        r = decimal(cast(right.value(context)))
-        raise Dentaku::ZeroDivisionError if r.zero?
+        vectorize_binary(left, right, context) do |lhs, rhs|
+          r = decimal(cast(rhs))
+          raise Dentaku::ZeroDivisionError if r.zero?
 
-        cast(cast(left.value(context)) % r)
+          cast(cast(lhs) % r)
+        end
       end
     end
 
@@ -257,7 +262,18 @@ module Dentaku
       end
 
       def value(context = {})
-        cast(left.value(context)) * 0.01
+        if Dentaku::Vector.positioned?(context)
+          cast(left.value(context)) * 0.01
+        else
+          shape = Dentaku::Vector.infer_shape(left, context)
+          if shape.empty?
+            cast(left.value(context)) * 0.01
+          else
+            Dentaku::Vector.elementwise_ast([left], shape, context) do |(operand)|
+              cast(operand) * 0.01
+            end
+          end
+        end
       end
 
       def operator

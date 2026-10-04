@@ -1,9 +1,12 @@
 # import all functions from Ruby's Math module
 require_relative '../function'
+require_relative '../vectorizable'
 
 module Dentaku
   module AST
     class RubyMath < Function
+      include Vectorizable
+
       def self.[](method)
         klass_name = method.to_s.capitalize
         klass = const_set(klass_name , Class.new(self))
@@ -42,14 +45,35 @@ module Dentaku
       end
 
       def value(context = {})
-        args = @args.flatten.map { |a|Dentaku::NumericParser.ensure_numeric!(a.value(context)) }
-        self.class.call(*args)
+        if Dentaku::Vector.positioned?(context)
+          apply_scalar(@args.map { |arg| arg.value(context) })
+        else
+          shape = Dentaku::Tensor.broadcast_shape(*@args.map { |arg| Dentaku::Vector.infer_shape(arg, context) })
+          if shape.empty?
+            apply_scalar(@args.map { |arg| arg.value(context) })
+          else
+            Dentaku::Vector.elementwise_ast(@args, shape, context) do |values|
+              apply_scalar(values)
+            end
+          end
+        end
+      end
+
+      def tensor_shape(context = {})
+        Dentaku::Tensor.broadcast_shape(*@args.map { |arg| Dentaku::Vector.infer_shape(arg, context) })
       end
 
       ARRAY_RETURN_TYPES = [:frexp, :lgamma].freeze
 
       def type
         ARRAY_RETURN_TYPES.include?(@name) ? :array : :numeric
+      end
+
+      private
+
+      def apply_scalar(values)
+        args = values.flatten.map { |value| Dentaku::NumericParser.ensure_numeric!(value) }
+        self.class.call(*args)
       end
     end
   end

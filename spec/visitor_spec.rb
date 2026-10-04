@@ -102,6 +102,7 @@ describe TestVisitor do
       :StringFunctions,
       :RubyMath,
       :Enum,
+      :Vectorizable,
     ]
   end
 

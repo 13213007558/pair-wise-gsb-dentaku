@@ -18,7 +18,7 @@ module Dentaku
                 "no value provided for variables: #{identifier}"
         end
 
-        case v
+        resolved = case v
         when Node
           value = v.value(context)
           context[identifier] = value if Dentaku.cache_identifier?
@@ -28,6 +28,8 @@ module Dentaku
         else
           v
         end
+
+        Dentaku::Vector.positioned?(context) ? Dentaku::Vector.leaf(Dentaku::Tensor.wrap(resolved), context) : resolved
       end
 
       def dependencies(context = {})
@@ -36,6 +38,13 @@ module Dentaku
 
       def accept(visitor)
         visitor.visit_identifier(self)
+      end
+
+      def tensor_shape(context = {})
+        value = context[identifier]
+        return [] if value.is_a?(Proc)
+        return value.tensor_shape(context) if value.is_a?(Node)
+        Dentaku::Tensor.shape_of(Dentaku::Tensor.wrap(value))
       end
 
       def to_s

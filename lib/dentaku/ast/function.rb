@@ -1,5 +1,6 @@
 require_relative 'node'
 require_relative 'function_registry'
+require_relative '../vector'
 
 module Dentaku
   module AST
@@ -33,8 +34,8 @@ module Dentaku
         registry.get(name)
       end
 
-      def self.register(name, type, implementation, volatile: false)
-        registry.register(name, type, implementation, volatile: volatile)
+      def self.register(name, type, implementation, volatile: false, vector_mode: :elementwise)
+        registry.register(name, type, implementation, volatile: volatile, vector_mode: vector_mode)
       end
 
       def self.register_class(name, function_class)

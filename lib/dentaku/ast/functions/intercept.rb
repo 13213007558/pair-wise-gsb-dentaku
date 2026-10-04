@@ -30,4 +30,4 @@ Dentaku::AST::Function.register(:intercept, :list, ->(*args) {
   intercept = x_values.zip(y_values).map { |x, y| y - slope * x }.sum / n
 
   BigDecimal(intercept, Float::DIG + 1)
-})
+}, vector_mode: :array)

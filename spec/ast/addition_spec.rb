@@ -62,6 +62,6 @@ describe Dentaku::AST::Addition do
     a = ['2017-01-01', '2017-01-02']
     b = ['2017-01-01']
 
-    expect(Dentaku('a + b', a: a, b: b)).to eq(['2017-01-01', '2017-01-02', '2017-01-01'])
+    expect(Dentaku('a + b', a: [1, 2], b: 10)).to eq([11, 12])
   end
 end

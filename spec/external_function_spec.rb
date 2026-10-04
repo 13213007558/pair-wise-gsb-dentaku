@@ -54,7 +54,9 @@ describe Dentaku::Calculator do
           :logical,
           ->(haystack, needle) {
             haystack.include?(needle)
-          }
+          },
+          nil,
+          vector_mode: :array
         )
 
         expect(calculator.evaluate("INCLUDES(list, 2)", list: [1, 2, 3])).to eq(true)

@@ -34,16 +34,18 @@ module Dentaku
       @aliases || Dentaku.aliases
     end
 
-    def self.add_function(name, type, body, callback = nil, volatile: false)
-      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile)
+    def self.add_function(name, type, body, callback = nil, volatile: false, vector_mode: :elementwise)
+      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback,
+                                                       volatile: volatile, vector_mode: vector_mode)
     end
 
     def self.add_functions(functions)
       functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
     end
 
-    def add_function(name, type, body, callback = nil, volatile: false)
-      @function_registry.register(name, type, body, callback, volatile: volatile)
+    def add_function(name, type, body, callback = nil, volatile: false, vector_mode: :elementwise)
+      @function_registry.register(name, type, body, callback,
+                                  volatile: volatile, vector_mode: vector_mode)
       self
     end
 
@@ -64,8 +66,21 @@ module Dentaku
       return evaluate_array(expression, context, &block) if expression.is_a?(Array)
 
       evaluate!(expression, context)
+    rescue Dentaku::BatchError => ex
+      if block_given?
+        ex.element_errors.each do |element_error|
+          report_partial(expression, element_error, ex.partial_results, &block)
+        end
+      end
+      ex.partial_results
     rescue Dentaku::Error => ex
       block.call(expression, ex) if block_given?
+    end
+
+    private def report_partial(expression, element_error, partial_results, &block)
+      error = element_error.cause_error
+      error.assigned_to = expression if error.respond_to?(:assigned_to=)
+      block.call(expression, error, element_error.index_path, partial_results)
     end
 
     private def evaluate_array(expression, data = {}, &block)

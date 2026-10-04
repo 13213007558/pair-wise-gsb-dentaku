@@ -1,19 +1,21 @@
 require_relative './operation'
+require_relative './vectorizable'
 
 module Dentaku
   module AST
     class Bitwise < Operation
-      def value(context = {})
-        left_value = left.value(context)
-        right_value = right.value(context)
+      include Vectorizable
 
-        left_value.public_send(operator, right_value)
-      rescue NoMethodError
-        raise Dentaku::ArgumentError.for(:incompatible_type, actual: left_value, expected: Integer),
-              "#{self.class} requires integer operands, but got #{left_value.class}"
-      rescue TypeError
-        raise Dentaku::ArgumentError.for(:incompatible_type, actual: right_value, expected: Integer),
-              "#{self.class} requires integer operands, but got #{right_value.class}"
+      def value(context = {})
+        vectorize_binary(left, right, context) do |lhs, rhs|
+          lhs.public_send(operator, rhs)
+        rescue NoMethodError
+          raise Dentaku::ArgumentError.for(:incompatible_type, actual: lhs, expected: Integer),
+                "#{self.class} requires integer operands, but got #{lhs.class}"
+        rescue TypeError
+          raise Dentaku::ArgumentError.for(:incompatible_type, actual: rhs, expected: Integer),
+                "#{self.class} requires integer operands, but got #{rhs.class}"
+        end
       end
     end
 

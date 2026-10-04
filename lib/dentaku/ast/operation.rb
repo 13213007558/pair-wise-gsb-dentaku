@@ -30,6 +30,13 @@ module Dentaku
         visitor.visit_operation(self)
       end
 
+      def tensor_shape(context = {})
+        shapes = [left, right].compact.map { |node| Dentaku::Vector.infer_shape(node, context) }
+        Dentaku::Tensor.broadcast_shape(*shapes)
+      rescue Dentaku::ShapeError
+        raise
+      end
+
       def display_operator
         operator.to_s
       end
