@@ -8,7 +8,7 @@ module Dentaku
         nil
       end
 
-      def register(name, type, implementation, callback = nil, volatile: false)
+      def register(name, type, implementation, callback = nil, volatile: false, array_mode: :whole)
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -65,6 +65,14 @@ module Dentaku
             @volatile
           end
 
+          def self.array_mode=(array_mode)
+            @array_mode = array_mode
+          end
+
+          def self.array_mode
+            @array_mode
+          end
+
           def self.arity
             @implementation.arity < 0 ? nil : @implementation.arity
           end
@@ -78,8 +86,34 @@ module Dentaku
           end
 
           def value(context = {})
-            args = @args.map { |a| a.value(context) }
-            self.class.implementation.call(*args)
+            path = context[Dentaku::ArrayValue::PATH_KEY]
+
+            if path && self.class.array_mode == :whole
+              cache = context[Dentaku::ArrayValue::CACHE_KEY] ||= {}
+              key = [self.class.name, object_id]
+
+              unless cache.key?(key)
+                whole_context = context.dup
+                whole_context.delete(Dentaku::ArrayValue::PATH_KEY)
+                cache[key] =
+                  begin
+                    args = evaluate_arguments(whole_context)
+                    [:value, self.class.implementation.call(*args)]
+                  rescue StandardError => error
+                    [:error, error]
+                  end
+              end
+
+              status, result = cache[key]
+              raise result if status == :error
+              return Dentaku::ArrayValue.index_value(result, path)
+            end
+
+            self.class.implementation.call(*evaluate_arguments(context))
+          end
+
+          def evaluate_arguments(context)
+            @args.map { |arg| arg.value(context) }
           end
 
           def type
@@ -96,6 +130,7 @@ module Dentaku
         function.implementation = implementation
         function.callback = callback
         function.volatile = volatile
+        function.array_mode = array_mode
 
         self[function_name(name)] = function
       end

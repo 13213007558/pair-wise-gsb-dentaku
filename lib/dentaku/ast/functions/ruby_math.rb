@@ -4,6 +4,10 @@ require_relative '../function'
 module Dentaku
   module AST
     class RubyMath < Function
+      def self.array_mode
+        :elementwise
+      end
+
       def self.[](method)
         klass_name = method.to_s.capitalize
         klass = const_set(klass_name , Class.new(self))

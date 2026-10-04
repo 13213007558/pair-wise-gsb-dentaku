@@ -5,4 +5,4 @@ Dentaku::AST::Function.register(:roundup, :numeric, lambda { |numeric, precision
   tens = 10.0**precision
   result = (Dentaku::NumericParser.ensure_numeric!(numeric) * tens).ceil / tens
   precision <= 0 ? result.to_i : result
-})
+}, array_mode: :elementwise)

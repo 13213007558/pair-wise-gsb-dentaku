@@ -4,6 +4,10 @@ require_relative '../../exceptions'
 module Dentaku
   module AST
     class Xor < Function
+      def self.array_mode
+        :elementwise
+      end
+
       def self.min_param_count
         1
       end

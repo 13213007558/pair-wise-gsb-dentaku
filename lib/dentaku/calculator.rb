@@ -34,21 +34,25 @@ module Dentaku
       @aliases || Dentaku.aliases
     end
 
-    def self.add_function(name, type, body, callback = nil, volatile: false)
-      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile)
+    def self.add_function(name, type, body, callback = nil, volatile: false, array_mode: :whole)
+      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback,
+                                                      volatile: volatile, array_mode: array_mode)
     end
 
     def self.add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each { |options| add_function(*options.first(4), **send(:registration_options, options)) }
     end
 
-    def add_function(name, type, body, callback = nil, volatile: false)
-      @function_registry.register(name, type, body, callback, volatile: volatile)
+    def add_function(name, type, body, callback = nil, volatile: false, array_mode: :whole)
+      @function_registry.register(name, type, body, callback,
+                                  volatile: volatile, array_mode: array_mode)
       self
     end
 
     def add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each do |options|
+        add_function(*options.first(4), **self.class.send(:registration_options, options))
+      end
       self
     end
 
@@ -64,8 +68,10 @@ module Dentaku
       return evaluate_array(expression, context, &block) if expression.is_a?(Array)
 
       evaluate!(expression, context)
+    rescue Dentaku::ArrayEvaluationError => ex
+      block ? block.call(expression, ex) : ex.partial_results
     rescue Dentaku::Error => ex
-      block.call(expression, ex) if block_given?
+      block ? block.call(expression, ex) : nil
     end
 
     private def evaluate_array(expression, data = {}, &block)
@@ -85,7 +91,7 @@ module Dentaku
                 "no value provided for variables: #{unbound.uniq.join(', ')}"
         end
 
-        node.value(memory)
+        Dentaku::ArrayValue.evaluate(node, memory)
       end
     end
 
@@ -237,5 +243,11 @@ module Dentaku
     def cache_dependency_order?
       @cache_dependency_order.nil? ? Dentaku.cache_dependency_order? : @cache_dependency_order
     end
+
+    def self.registration_options(options)
+      _name, _type, _body, _callback, volatile, array_options = options
+      { volatile: !!volatile }.merge(array_options || {})
+    end
+    private_class_method :registration_options
   end
 end

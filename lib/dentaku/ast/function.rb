@@ -29,12 +29,16 @@ module Dentaku
         false
       end
 
+      def self.array_mode
+        @array_mode || :elementwise
+      end
+
       def self.get(name)
         registry.get(name)
       end
 
-      def self.register(name, type, implementation, volatile: false)
-        registry.register(name, type, implementation, volatile: volatile)
+      def self.register(name, type, implementation, volatile: false, array_mode: :whole)
+        registry.register(name, type, implementation, volatile: volatile, array_mode: array_mode)
       end
 
       def self.register_class(name, function_class)
@@ -43,6 +47,29 @@ module Dentaku
 
       def self.registry
         @registry ||= FunctionRegistry.new
+      end
+
+      def value(context = {})
+        path = context[Dentaku::ArrayValue::PATH_KEY]
+        return super unless path
+        return super if self.class.array_mode == :elementwise
+
+        cache = context[Dentaku::ArrayValue::CACHE_KEY] ||= {}
+        key = [self.class.name, object_id]
+
+        unless cache.key?(key)
+          cache[key] =
+            begin
+              [:value, super(Dentaku::ArrayValue.without_path(context))]
+            rescue StandardError => error
+              [:error, error]
+            end
+        end
+
+        status, result = cache[key]
+        raise result if status == :error
+
+        Dentaku::ArrayValue.index_value(result, path)
       end
 
       private

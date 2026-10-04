@@ -13,6 +13,7 @@ module Dentaku
       end
 
       def value(context = {})
+        path = context[Dentaku::ArrayValue::PATH_KEY]
         v = context.fetch(identifier) do
           raise UnboundVariableError.new([identifier]),
                 "no value provided for variables: #{identifier}"
@@ -22,11 +23,12 @@ module Dentaku
         when Node
           value = v.value(context)
           context[identifier] = value if Dentaku.cache_identifier?
-          value
+          Dentaku::ArrayValue.index_value(value, path)
         when Proc
-          v.call
+          value = v.call
+          Dentaku::ArrayValue.index_value(value, path)
         else
-          v
+          Dentaku::ArrayValue.index_value(v, path)
         end
       end
 

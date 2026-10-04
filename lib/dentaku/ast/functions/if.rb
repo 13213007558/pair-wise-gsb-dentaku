@@ -24,7 +24,7 @@ module Dentaku
       end
 
       def value(context = {})
-        predicate.value(context) ? left.value(context) : right.value(context)
+        !!predicate.value(context) ? selected_value(left, context) : selected_value(right, context)
       end
 
       def node_type
@@ -38,12 +38,19 @@ module Dentaku
       def dependencies(context = {})
         return all_arg_dependencies(context) if static_mode?(context) || !predicate.pure?
 
-        predicate.value(context) ? left.dependencies(context) : right.dependencies(context)
+        predicate_value = predicate.value(context)
+        return [] if predicate_value.is_a?(::Array)
+
+        predicate_value ? left.dependencies(context) : right.dependencies(context)
       rescue Dentaku::Error
         all_arg_dependencies(context)
       end
 
       private
+
+      def selected_value(branch, context)
+        branch.value(context)
+      end
 
       def all_arg_dependencies(context)
         args.flat_map { |arg| arg.dependencies(context) }.uniq

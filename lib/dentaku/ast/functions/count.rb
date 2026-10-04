@@ -3,6 +3,10 @@ require_relative '../function'
 module Dentaku
   module AST
     class Count < Function
+      def self.array_mode
+        :whole
+      end
+
       def self.min_param_count
         0
       end

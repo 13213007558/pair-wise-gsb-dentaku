@@ -4,6 +4,10 @@ require_relative '../../exceptions'
 module Dentaku
   module AST
     class Reduce < Function
+      def self.array_mode
+        :whole
+      end
+
       def self.min_param_count
         4
       end

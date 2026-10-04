@@ -22,4 +22,4 @@ Dentaku::AST::Function.register(:or, :logical, lambda { |*args|
       )
     end
   end
-})
+}, array_mode: :elementwise)

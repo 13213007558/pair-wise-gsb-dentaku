@@ -199,6 +199,51 @@ identifier on a branch that is not taken will not be reported; use
 Context keys prefixed with a double underscore (e.g. `__evaluation_mode`)
 are reserved for internal use.
 
+ARRAY VALUES AND BROADCASTING
+-----------------------------
+
+Regular nested arrays are shaped values. A shape lists the size of every axis;
+scalars have an empty shape and broadcast against any shape. Dimensions are
+aligned from the trailing edge, and each dimension must be either equal or of
+size `1`. A zero-length axis produces an empty result when broadcast against a
+scalar or a size-`1` axis, but cannot be paired with another nonzero size:
+
+```ruby
+prices    = [[100], [200]]          # shape [2, 1]
+discounts = [[0.1, 0.2, 0.3]]      # shape [1, 3]
+calculator.evaluate!('prices * (1 - discounts)', prices: prices, discounts: discounts)
+#=> [[90.0, 80.0, 70.0], [180.0, 160.0, 140.0]]  # shape [2, 3]
+```
+
+An irregular nested array such as `[[1, 2], [3]]` has no regular shape. It is
+not flattened or aligned element-by-element; it is passed intact to a
+whole-array function such as `SUM`, while an elementwise numeric function
+rejects it.
+
+`IF` chooses its branch independently for every element. The unselected branch
+at an index is neither calculated nor counted as a function call. If some
+selected elements fail, `evaluate!` raises `Dentaku::ArrayEvaluationError`;
+its `indices` identifies each failing index and `partial_results` contains the
+successful values with failures represented by `nil`. Non-bang `evaluate`
+returns those partial results.
+
+Custom functions distinguish the two ways arrays can be used:
+
+```ruby
+# Invoked once for each scalar result; array arguments broadcast.
+calculator.add_function(:label, :string, ->(x) { "v#{x}" },
+                        array_mode: :elementwise)
+
+# Invoked once with the complete collection.
+calculator.add_function(:my_count, :numeric, ->(values) { values.length },
+                        array_mode: :whole)
+```
+
+Built-in scalar functions such as `ABS` and `ROUND` are elementwise; collection
+functions such as `SUM`, `COUNT`, `MAP`, and `REDUCE` receive the whole array.
+Shape conflicts are detected before an elementwise side-effecting function is
+invoked.
+
 BUILT-IN OPERATORS AND FUNCTIONS
 ---------------------------------
 
@@ -382,6 +427,15 @@ operator.  A function used standalone, in comparisons, or as a function
 argument behaves the same whatever type is declared -- which is why an
 incorrect type can go unnoticed for a long time.  Declare the type your lambda
 actually returns.
+
+### Array call mode
+
+The optional `array_mode:` keyword controls how array arguments are supplied.
+`:whole` (the default for external functions) invokes the lambda once with the
+original arguments and is appropriate for functions that process a collection
+themselves. `:elementwise` broadcasts arguments along their trailing
+dimensions and invokes the lambda once for each output scalar. See ARRAY VALUES
+AND BROADCASTING above for shape and error semantics.
 
 Dentaku assumes registered functions are pure (see DEPENDENCY ANALYSIS AND
 SHORT-CIRCUITING above).  A function that reads external state, performs

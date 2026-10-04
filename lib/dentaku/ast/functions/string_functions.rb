@@ -4,6 +4,10 @@ module Dentaku
   module AST
     module StringFunctions
       class Base < Function
+        def self.array_mode
+          :elementwise
+        end
+
         def type
           :string
         end
