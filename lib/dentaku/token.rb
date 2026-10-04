@@ -1,6 +1,9 @@
 module Dentaku
   class Token
     attr_reader :category, :raw_value, :value
+    # where this token appeared in the original expression text
+    # (a Dentaku::SourceLocation), assigned by the tokenizer
+    attr_accessor :loc
 
     def initialize(category, value, raw_value = nil)
       @category  = category

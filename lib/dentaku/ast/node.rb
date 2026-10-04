@@ -7,6 +7,10 @@ module Dentaku
       STATIC_MODE_KEY = "__static_dependencies".freeze
       STATIC_CONTEXT = { STATIC_MODE_KEY => true }.freeze
 
+      # where this node came from in the original expression text
+      # (a Dentaku::SourceLocation), assigned by the parser
+      attr_accessor :loc
+
       def self.precedence
         0
       end

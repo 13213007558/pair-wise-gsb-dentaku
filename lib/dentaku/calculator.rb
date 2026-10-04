@@ -5,12 +5,14 @@ require 'dentaku/flat_hash'
 require 'dentaku/parser'
 require 'dentaku/string_casing'
 require 'dentaku/token'
+require 'dentaku/type_checker'
 
 module Dentaku
   class Calculator
     include StringCasing
     attr_reader :result, :memory, :tokenizer, :case_sensitive,
-                :nested_data_support, :ast_cache, :raw_date_literals
+                :nested_data_support, :ast_cache, :raw_date_literals,
+                :function_registry
 
     def initialize(case_sensitive: false, aliases: nil, nested_data_support: true,
                    raw_date_literals: true, ast_cache: {},
@@ -99,6 +101,19 @@ module Dentaku
 
     def solve(expression_hash, &block)
       BulkExpressionSolver.new(expression_hash, self).solve(&block)
+    end
+
+    # Statically checks an expression against declared variable types
+    # (and optional custom function signatures) without evaluating it.
+    # Returns a Dentaku::TypeChecker::Result with the inferred result
+    # type and any definite type conflicts, each located in the
+    # original expression text.
+    #
+    #   calculator.check("start_date + name",
+    #                    types: { start_date: :datetime, name: :string })
+    def check(expression, types: {}, functions: {})
+      TypeChecker.new(types: types, functions: functions, calculator: self)
+                 .check(expression)
     end
 
     def dependencies(expression, context = {})

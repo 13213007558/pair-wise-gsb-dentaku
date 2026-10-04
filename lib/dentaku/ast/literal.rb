@@ -7,6 +7,7 @@ module Dentaku
         @token = token
         @value = token.value
         @type  = token.category
+        @loc   = token.loc
       end
 
       def value(*)

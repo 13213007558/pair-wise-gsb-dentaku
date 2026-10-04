@@ -429,8 +429,62 @@ c.evaluate('rrrrround!(8.2) + округлить(8.4)')
 # 16
 ```
 
+STATIC TYPE CHECKING
+--------------------
+
+Formulas can be checked at entry time, before any task runs them.
+`Calculator#check` takes declared variable types, infers the result type
+of the expression, and reports definite type conflicts (like adding a
+string to a date) with their positions in the original text:
+
+```ruby
+> c = Dentaku::Calculator.new
+> result = c.check('IF(age >= 18, price * 0.9, start_date + name)',
+                   types: { age: :numeric, price: :numeric,
+                            start_date: :datetime, name: :string })
+> result.ok?
+#=> false
+> result.issues.first.message
+#=> "right operand of + must be numeric or datetime or duration, got string"
+> result.issues.first.loc
+#=> 40...44  (the "name" in the expression)
+```
+
+Declared types are `:numeric`, `:string`, `:logical`, `:datetime`,
+`:duration`, `:nil`, `[:array, <type>]` for arrays, and
+`[:union, <type>, ...]` for unions. Variables without a declaration are
+"unknown": using them is not an error, it just makes the inferred result
+unknown as well -- unknown is never confused with definitely illegal.
+
+An `IF` whose branches have different types produces a union type, and
+each member is checked against the surrounding expression:
+
+```ruby
+> c.check('IF(flag, total, "n/a") * tax_rate',
+          types: { flag: :logical, total: :numeric, tax_rate: :numeric }).issues
+#=> left operand of * must be numeric, got string (at the IF expression)
+```
+
+Custom functions participate through declared signatures and are never
+called during checking. A function may have several signatures; calls
+with no matching signature, and calls that are genuinely ambiguous
+(multiple matches that disagree on the result type), are reported:
+
+```ruby
+> c.check('discount(price, 2)',
+          types: { price: :numeric },
+          functions: { discount: [{ params: [:numeric, :numeric], returns: :numeric }] })
+> c.check('flex(1)', functions: { flex: [{ params: [:numeric], returns: :numeric },
+                                         { params: [:string], returns: :string }] })
+```
+
+Checking is recursive: array literals, index access (`matrix[0][1]`),
+and the item variables of the enum functions (`MAP`, `FILTER`, `ALL`,
+`ANY`, `PLUCK`, `REDUCE`) are all checked against the declared element
+types, not just the outermost expression.
+
 THANKS
-------
+-------
 
 Big thanks to [ElkStone Basements](http://www.elkstonebasements.com/) for
 allowing me to extract and open source this code.  Thanks also to all the

@@ -1,4 +1,5 @@
 require_relative './ast'
+require 'dentaku/source_location'
 
 module Dentaku
   class Parser
@@ -38,10 +39,14 @@ module Dentaku
       @function_registry = options.fetch(:function_registry, nil)
       @case_sensitive    = options.fetch(:case_sensitive, false)
       @skip_indices      = []
+      # tokens for the entries on the +operations+ stack, kept in lockstep
+      # so nodes built by +consume+ can be located in the source text
+      @operation_tokens  = []
     end
 
     def consume(count = 2)
       operation = operations.pop
+      operation_token = operation_tokens.pop
       fail! :invalid_statement if operation.nil?
 
       output_size = output.length
@@ -60,14 +65,18 @@ module Dentaku
       end
 
       args = []
-      if operation == AST::Array && output.empty?
-        # special case: empty array literal '{}'
-        output.push(operation.new)
-      else
-        fail! :invalid_statement if output_size < args_size
-        args = Array.new(args_size) { output.pop }.reverse
-        output.push operation.new(*args)
-      end
+      node =
+        if operation == AST::Array && output.empty?
+          # special case: empty array literal '{}'
+          operation.new
+        else
+          fail! :invalid_statement if output_size < args_size
+          args = Array.new(args_size) { output.pop }.reverse
+          operation.new(*args)
+        end
+
+      locate(node, operation_token, args)
+      output.push node
 
       if operation.respond_to?(:callback) && !operation.callback.nil?
         operation.callback.call(args)
@@ -116,6 +125,29 @@ module Dentaku
 
     private
 
+    attr_reader :operation_tokens
+
+    # gives the freshly built node a source span covering its operands
+    # and its own operator/function token
+    def locate(node, token, args)
+      return unless node.respond_to?(:loc=)
+
+      locations = args.filter_map(&:loc)
+      locations << token.loc if token && token.loc
+      return if locations.empty?
+
+      start = locations.map(&:offset).min
+      stop  = locations.map(&:end_offset).max
+      node.loc = SourceLocation.new(start, stop - start)
+    end
+
+    # stretches a node's span to include a closing bracket/paren token
+    def extend_loc(node, token)
+      return unless node.respond_to?(:loc) && node.loc && token.loc
+
+      node.loc = SourceLocation.new(node.loc.offset, token.loc.end_offset - node.loc.offset)
+    end
+
     def process_token(token, lookahead, index)
       case token.category
       when :datetime      then output << AST::DateTime.new(token)
@@ -126,7 +158,7 @@ module Dentaku
       when :operator, :comparator, :combinator
         handle_operator(token, lookahead)
       when :null
-        output << AST::Nil.new
+        output << AST::Nil.new.tap { |node| node.loc = token.loc }
       when :function
         handle_function(token)
       when :case
@@ -150,6 +182,7 @@ module Dentaku
         consume while operations.last && operations.last < AST::Operation && op_class.precedence <= operations.last.precedence
       end
       operations.push op_class
+      operation_tokens.push token
     end
 
     def handle_function(token)
@@ -157,6 +190,7 @@ module Dentaku
       fail! :undefined_function, function_name: token.value if func.nil?
       arities.push 0
       operations.push func
+      operation_tokens.push token
     end
 
     def handle_case(token)
@@ -168,6 +202,7 @@ module Dentaku
       when :open
         # Start a new CASE context.
         operations.push AST::Case
+        operation_tokens.push token
         arities.push(0)
 
       when :close
@@ -175,6 +210,7 @@ module Dentaku
         if operations[token_index] == AST::CaseThen
           consume_until(AST::Case)
           operations.push(AST::CaseConditional)
+          operation_tokens.push token
           consume(2)
           arities[-1] += 1
         elsif operations[token_index] == AST::CaseElse
@@ -189,6 +225,7 @@ module Dentaku
           # Close out previous WHEN/THEN pair.
           consume_until([AST::CaseWhen, AST::Case])
           operations.push(AST::CaseConditional)
+          operation_tokens.push token
           consume(2)
           arities[-1] += 1
         elsif operations[token_index].nil? ||
@@ -197,24 +234,29 @@ module Dentaku
           # switch expression, then finalize the switch variable.
           consume_until(AST::Case)
           operations.push(AST::CaseSwitchVariable)
+          operation_tokens.push token
           consume
         end
         operations.push(AST::CaseWhen)
+        operation_tokens.push token
 
       when :then
         if operations[token_index] == AST::CaseWhen
           consume_until([AST::CaseThen, AST::Case])
         end
         operations.push(AST::CaseThen)
+        operation_tokens.push token
 
       when :else
         if operations[token_index] == AST::CaseThen
           consume_until(AST::Case)
           operations.push(AST::CaseConditional)
+          operation_tokens.push token
           consume(2)
           arities[-1] += 1
         end
         operations.push(AST::CaseElse)
+        operation_tokens.push token
 
       else
         fail! :unknown_case_token, token_name: token.value
@@ -235,11 +277,13 @@ module Dentaku
       case token.value
       when :lbracket
         operations.push AST::Access
+        operation_tokens.push token
 
       when :rbracket
         consume while operations.any? && operations.last != AST::Access
         fail! :unbalanced_bracket, token: token unless operations.last == AST::Access
         consume
+        extend_loc(output.last, token)
       end
     end
 
@@ -247,12 +291,14 @@ module Dentaku
       case token.value
       when :array_start
         operations.push AST::Array
+        operation_tokens.push token
         arities.push 0
 
       when :array_end
         consume while operations.any? && operations.last != AST::Array
         fail! :unbalanced_bracket, token: token unless operations.last == AST::Array
         consume(arities.pop.succ)
+        extend_loc(output.last, token)
       end
     end
 
@@ -267,14 +313,17 @@ module Dentaku
           consume(0)
         else
           operations.push AST::Grouping
+          operation_tokens.push token
         end
 
       when :close
         consume while operations.any? && operations.last != AST::Grouping
         lparen = operations.pop
+        operation_tokens.pop
         fail! :unbalanced_parenthesis, token: token unless lparen == AST::Grouping
         if operations.last && operations.last < AST::Function
           consume(arities.pop.succ)
+          extend_loc(output.last, token)
         end
 
       when :comma

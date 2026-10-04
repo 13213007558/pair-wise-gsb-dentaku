@@ -10,6 +10,7 @@ module Dentaku
       def initialize(token, options = {})
         @case_sensitive = options.fetch(:case_sensitive, false)
         @identifier = standardize_case(token.value)
+        @loc = token.loc
       end
 
       def value(context = {})
