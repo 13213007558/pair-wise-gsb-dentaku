@@ -148,6 +148,43 @@ considered rough estimates, and you should measure with representative formulas
 from your application.  Also, if new formulas are constantly introduced to your
 application, AST caching will consume more memory with each new formula.
 
+PERSISTENT COMPUTATION SESSIONS
+-------------------------------
+
+For workbooks with many formulas, create a persistent `Session`.  It stores
+each formula's value and only the dependencies that were actually read during
+evaluation.  Updating an input returns the set of formula outputs whose values
+or error states changed; unrelated formulas are not re-evaluated.
+
+```ruby
+calculator = Dentaku::Calculator.new
+session = calculator.session(
+  output: 'IF(use_a, input_a, input_b)',
+  total:  'output + 1'
+)
+
+session.update(use_a: true, input_a: 10, input_b: 20)
+#=> {:output=>10, :total=>11}
+
+session.update(use_a: true, input_a: 10, input_b: 99)
+#=> {}
+
+session.update(use_a: false)
+#=> {:output=>99, :total=>100}
+```
+
+Branches that do not execute never become value dependencies.  When a condition
+flips, the old subscription is removed and the new branch becomes active on the
+same calculation.  Changing a formula definition or re-registering a custom
+function invalidates results that used the old version.  Volatile functions are
+still invoked once for each executed occurrence in every calculation round, so
+their results are never served from the session cache.
+
+`session.dependencies(:output)` returns the currently active direct
+dependencies.  Deleting a variable or formula, and introducing or removing a
+dependency cycle, updates cached error states and propagates `:undefined`
+(non-bang) or raises the original error (`update!` / `calculate!`).
+
 DEPENDENCY ANALYSIS AND SHORT-CIRCUITING
 ----------------------------------------
 

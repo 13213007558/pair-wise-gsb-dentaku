@@ -43,11 +43,15 @@ module Dentaku
         initial_value   = @args[4] && @args[4].value(context)
 
         collection.reduce(initial_value) do |memo, item|
-          expression.value(
-            context.merge(
-              FlatHash.from_hash_with_intermediates(memo_identifier => memo, item_identifier => item)
-            )
-          )
+          locals = { memo_identifier => memo, item_identifier => item }
+          merged_context = context.merge(FlatHash.from_hash_with_intermediates(locals))
+          tracker = context[EvaluationTracker::CONTEXT_KEY]
+
+          if tracker
+            tracker.with_locals(memo_identifier, item_identifier) { expression.value(merged_context) }
+          else
+            expression.value(merged_context)
+          end
         end
       end
 

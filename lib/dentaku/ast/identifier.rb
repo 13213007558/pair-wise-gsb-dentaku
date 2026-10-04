@@ -13,6 +13,7 @@ module Dentaku
       end
 
       def value(context = {})
+        tracker = context[EvaluationTracker::CONTEXT_KEY]
         v = context.fetch(identifier) do
           raise UnboundVariableError.new([identifier]),
                 "no value provided for variables: #{identifier}"
@@ -20,12 +21,12 @@ module Dentaku
 
         case v
         when Node
-          value = v.value(context)
-          context[identifier] = value if Dentaku.cache_identifier?
-          value
+          evaluate_node(v, context, tracker)
         when Proc
+          tracker&.read(identifier)
           v.call
         else
+          tracker&.read(identifier)
           v
         end
       end
@@ -43,6 +44,16 @@ module Dentaku
       end
 
       private
+
+      def evaluate_node(node, context, tracker)
+        if tracker
+          node.value(context)
+        else
+          value = node.value(context)
+          context[identifier] = value if Dentaku.cache_identifier?
+          value
+        end
+      end
 
       def dependencies_of(node, context)
         node.respond_to?(:dependencies) ? node.dependencies(context) : []

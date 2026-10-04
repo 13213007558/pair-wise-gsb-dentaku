@@ -3,6 +3,7 @@ require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
 require 'dentaku/parser'
+require 'dentaku/session'
 require 'dentaku/string_casing'
 require 'dentaku/token'
 
@@ -10,7 +11,8 @@ module Dentaku
   class Calculator
     include StringCasing
     attr_reader :result, :memory, :tokenizer, :case_sensitive,
-                :nested_data_support, :ast_cache, :raw_date_literals
+                :nested_data_support, :ast_cache, :raw_date_literals,
+                :function_registry
 
     def initialize(case_sensitive: false, aliases: nil, nested_data_support: true,
                    raw_date_literals: true, ast_cache: {},
@@ -44,6 +46,7 @@ module Dentaku
 
     def add_function(name, type, body, callback = nil, volatile: false)
       @function_registry.register(name, type, body, callback, volatile: volatile)
+      clear_cache
       self
     end
 
@@ -99,6 +102,11 @@ module Dentaku
 
     def solve(expression_hash, &block)
       BulkExpressionSolver.new(expression_hash, self).solve(&block)
+    end
+
+    def session(formulas = nil, inputs: {}, strict: false, **inline_formulas)
+      formulas ||= inline_formulas
+      Session.new(self, formulas: formulas, inputs: inputs, strict: strict)
     end
 
     def dependencies(expression, context = {})

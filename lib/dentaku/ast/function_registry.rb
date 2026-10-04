@@ -1,6 +1,15 @@
+require_relative '../evaluation_tracker'
+
 module Dentaku
   module AST
     class FunctionRegistry < Hash
+      attr_reader :version
+
+      def initialize(*args, **options)
+        super
+        @version = 0
+      end
+
       def get(name)
         name = function_name(name)
         return self[name] if has_key?(name)
@@ -9,6 +18,8 @@ module Dentaku
       end
 
       def register(name, type, implementation, callback = nil, volatile: false)
+        @version += 1
+
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -65,6 +76,30 @@ module Dentaku
             @volatile
           end
 
+          def self.registry=(registry)
+            @registry = registry
+          end
+
+          def self.registry
+            @registry
+          end
+
+          def self.function_name=(name)
+            @function_name = name.to_s.downcase
+          end
+
+          def self.function_name
+            @function_name
+          end
+
+          def self.function_version=(version)
+            @function_version = version
+          end
+
+          def self.function_version
+            @function_version
+          end
+
           def self.arity
             @implementation.arity < 0 ? nil : @implementation.arity
           end
@@ -79,6 +114,13 @@ module Dentaku
 
           def value(context = {})
             args = @args.map { |a| a.value(context) }
+            context[Dentaku::EvaluationTracker::CONTEXT_KEY]&.use_function(
+              self.class.function_name,
+              [self.class.registry.object_id, self.class.function_version]
+            )
+            if self.class.volatile?
+              context[Dentaku::EvaluationTracker::CONTEXT_KEY]&.mark_volatile!
+            end
             self.class.implementation.call(*args)
           end
 
@@ -96,11 +138,15 @@ module Dentaku
         function.implementation = implementation
         function.callback = callback
         function.volatile = volatile
+        function.registry = self
+        function.function_name = name
+        function.function_version = @version
 
         self[function_name(name)] = function
       end
 
       def register_class(name, function_class)
+        @version += 1
         self[function_name(name)] = function_class
       end
 
