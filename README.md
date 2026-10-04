@@ -402,6 +402,52 @@ The predicate itself is then evaluated exactly once per `evaluate!` call,
 at evaluation time.  In `add_functions`, pass volatility as a fifth tuple
 element: `[:user_level, :numeric, -> { ... }, nil, true]`.
 
+GRADIENTS AND SENSITIVITY ANALYSIS
+----------------------------------
+
+`evaluate_with_gradient` evaluates a formula and returns its analytic partial
+derivatives in a single forward pass. It does not perturb inputs or call any
+function additional times while calculating the gradient.
+
+```ruby
+> c = Dentaku::Calculator.new
+> result = c.evaluate_with_gradient('x * x + y', x: 3, y: 4)
+> result.result
+#=> 13
+> result.gradient
+#=> { "x" => 6, "y" => 1 }
+> result.status
+#=> :ok
+```
+
+Repeated occurrences of one variable are accumulated into one gradient entry.
+`IF`, `AND`, and `OR` preserve their normal short-circuit behavior, so inactive
+branches are neither evaluated nor differentiated. The bang method raises
+`Dentaku::GradientError` for non-ok statuses; the non-bang method returns the
+result object.
+
+Custom functions declare derivative rules alongside their implementation. A
+unary rule receives the input value. A rule for a fixed-arity function receives
+its arguments directly, while a variadic rule receives an array of arguments.
+
+```ruby
+> c.add_function(
+>   :square,
+>   :numeric,
+>   ->(x) { x * x },
+>   derivative: ->(x) { 2 * x }
+> )
+> c.evaluate_with_gradient('square(x)', x: 3).gradient
+#=> { "x" => 6 }
+```
+
+Possible statuses are:
+
+* `:ok` — all active derivatives were available
+* `:non_differentiable` — evaluation reached a point such as `ABS(0)` or an `IF` boundary
+* `:unknown_derivative` — a variable reached a function without a declared derivative rule
+* `:custom_function_error` — the custom implementation or its derivative failed
+
 FUNCTION ALIASES
 ----------------
 

@@ -2,6 +2,8 @@ require 'dentaku/bulk_expression_solver'
 require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
+require 'dentaku/gradient_evaluator'
+require 'dentaku/gradient_result'
 require 'dentaku/parser'
 require 'dentaku/string_casing'
 require 'dentaku/token'
@@ -34,21 +36,31 @@ module Dentaku
       @aliases || Dentaku.aliases
     end
 
-    def self.add_function(name, type, body, callback = nil, volatile: false)
-      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile)
+    def self.add_function(*arguments)
+      name, type, body, callback, options = function_registration_options(arguments)
+      Dentaku::AST::FunctionRegistry.default.register(
+        name, type, body, callback, **options
+      )
     end
 
     def self.add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each do |function|
+        name, type, body, callback, options = function_registration_options(function)
+        add_function(name, type, body, callback, **options)
+      end
     end
 
-    def add_function(name, type, body, callback = nil, volatile: false)
-      @function_registry.register(name, type, body, callback, volatile: volatile)
+    def add_function(*arguments)
+      name, type, body, callback, options = self.class.send(:function_registration_options, arguments)
+      @function_registry.register(name, type, body, callback, **options)
       self
     end
 
     def add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each do |function|
+        name, type, body, callback, options = self.class.send(:function_registration_options, function)
+        add_function(name, type, body, callback, **options)
+      end
       self
     end
 
@@ -91,6 +103,35 @@ module Dentaku
 
     private def evaluate_array!(expression, data = {}, &block)
       expression.map { |e| evaluate!(e, data, &block) }
+    end
+
+    def evaluate_with_gradient(expression, data = {})
+      evaluate_with_gradient!(expression, data)
+    rescue GradientError => error
+      error.gradient_result
+    rescue Dentaku::Error
+      nil
+    end
+
+    def gradient(expression, data = {})
+      evaluate_with_gradient(expression, data)
+    end
+
+    def evaluate_with_gradient!(expression, data = {})
+      context = evaluation_context(data, :strict)
+      raise ::ArgumentError, 'gradient evaluation supports one expression at a time' if expression.is_a?(Array)
+
+      store(context) do
+        node = ast(expression)
+        GradientEvaluator
+          .new(node, memory)
+          .call
+          .tap { |result| raise GradientError.new(result) unless result.ok? }
+      end
+    end
+
+    def gradient!(expression, data = {})
+      evaluate_with_gradient!(expression, data)
     end
 
     def solve!(expression_hash)
@@ -237,5 +278,30 @@ module Dentaku
     def cache_dependency_order?
       @cache_dependency_order.nil? ? Dentaku.cache_dependency_order? : @cache_dependency_order
     end
+
+    def self.function_registration_options(*arguments)
+      arguments = arguments.first
+      name, type, body, callback, fifth, sixth = arguments
+      options_keys = %i[volatile derivative]
+      if arguments.length == 4 && callback.is_a?(Hash) && (callback.keys - options_keys).empty?
+        return [name, type, body, nil, callback]
+      end
+
+      return [name, type, body, callback, fifth] if fifth.is_a?(Hash)
+      return [name, type, body, callback, {}] if arguments.length <= 4
+
+      options = { volatile: !!fifth }
+      if sixth.is_a?(Hash)
+        options.merge!(sixth)
+      elsif arguments.length >= 6
+        if sixth == true || sixth == false || sixth.nil?
+          options[:volatile] = !!sixth
+        else
+          options[:derivative] = sixth
+        end
+      end
+      [name, type, body, callback, options]
+    end
+    private_class_method :function_registration_options
   end
 end

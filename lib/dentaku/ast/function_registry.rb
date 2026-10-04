@@ -8,7 +8,21 @@ module Dentaku
         nil
       end
 
-      def register(name, type, implementation, callback = nil, volatile: false)
+      def register(*arguments, derivative: nil, volatile: false)
+        name, type, implementation, callback, fifth, sixth = arguments
+        if arguments.length <= 3
+          callback = nil
+        elsif arguments.length == 4 && callback.is_a?(Hash)
+          options = callback
+          callback = nil
+          volatile = options.fetch(:volatile, false)
+          derivative = options[:derivative]
+        elsif fifth == true || fifth == false || fifth.nil?
+          volatile = !!fifth if arguments.length >= 5
+          derivative ||= sixth if arguments.length >= 6
+        else
+          derivative = fifth
+        end
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -65,6 +79,14 @@ module Dentaku
             @volatile
           end
 
+          def self.derivative=(derivative)
+            @derivative = derivative
+          end
+
+          def self.derivative
+            @derivative
+          end
+
           def self.arity
             @implementation.arity < 0 ? nil : @implementation.arity
           end
@@ -96,6 +118,7 @@ module Dentaku
         function.implementation = implementation
         function.callback = callback
         function.volatile = volatile
+        function.derivative = derivative
 
         self[function_name(name)] = function
       end
