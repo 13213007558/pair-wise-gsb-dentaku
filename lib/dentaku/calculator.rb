@@ -2,6 +2,7 @@ require 'dentaku/bulk_expression_solver'
 require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
+require 'dentaku/gradient_evaluator'
 require 'dentaku/parser'
 require 'dentaku/string_casing'
 require 'dentaku/token'
@@ -34,21 +35,33 @@ module Dentaku
       @aliases || Dentaku.aliases
     end
 
-    def self.add_function(name, type, body, callback = nil, volatile: false)
-      Dentaku::AST::FunctionRegistry.default.register(name, type, body, callback, volatile: volatile)
+    def self.add_function(name, type, body, callback = nil, volatile: false, derivative: nil)
+      Dentaku::AST::FunctionRegistry.default.register(
+        name, type, body, callback, volatile: volatile, derivative: derivative
+      )
     end
 
     def self.add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each do |entry|
+        name, type, body, callback, options = entry
+        options ||= {}
+        add_function(name, type, body, callback, **function_options(options))
+      end
     end
 
-    def add_function(name, type, body, callback = nil, volatile: false)
-      @function_registry.register(name, type, body, callback, volatile: volatile)
+    def add_function(name, type, body, callback = nil, volatile: false, derivative: nil)
+      @function_registry.register(
+        name, type, body, callback, volatile: volatile, derivative: derivative
+      )
       self
     end
 
     def add_functions(functions)
-      functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      functions.each do |entry|
+        name, type, body, callback, options = entry
+        options ||= {}
+        add_function(name, type, body, callback, **function_options(options))
+      end
       self
     end
 
@@ -91,6 +104,29 @@ module Dentaku
 
     private def evaluate_array!(expression, data = {}, &block)
       expression.map { |e| evaluate!(e, data, &block) }
+    end
+
+    def gradient(expression, data = {}, &block)
+      context = evaluation_context(data, :permissive)
+      store(context) do
+        begin
+          GradientEvaluator.new(ast(expression), memory).evaluate
+        rescue Dentaku::Error => error
+          block ? block.call(expression, error) : failure_result(error)
+        end
+      end
+    end
+
+    def gradient!(expression, data = {})
+      raise ::ArgumentError, 'gradient! does not accept arrays' if expression.is_a?(Array)
+
+      context = evaluation_context(data, :strict)
+      store(context) do
+        node = ast(expression)
+        result = GradientEvaluator.new(node, memory).evaluate
+        raise result.error unless result.ok?
+        result
+      end
     end
 
     def solve!(expression_hash)
@@ -236,6 +272,32 @@ module Dentaku
 
     def cache_dependency_order?
       @cache_dependency_order.nil? ? Dentaku.cache_dependency_order? : @cache_dependency_order
+    end
+
+    def self.function_options(options)
+      if options == true || options == false
+        { volatile: options }
+      else
+        options
+      end
+    end
+    private_class_method :function_options
+
+    private
+
+    def function_options(options)
+      self.class.send(:function_options, options)
+    end
+
+    def failure_result(error)
+      status =
+        case error
+        when GradientError then error.status
+        when ZeroDivisionError, MathDomainError then :function_error
+        else :non_differentiable
+        end
+
+      GradientResult.new(status: status, error: error)
     end
   end
 end

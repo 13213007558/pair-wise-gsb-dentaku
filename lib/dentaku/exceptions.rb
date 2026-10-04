@@ -205,4 +205,33 @@ module Dentaku
   class ZeroDivisionError < ::ZeroDivisionError
     include Error
   end
+
+  class GradientError < BaseError
+    attr_reader :status, :reason
+
+    def initialize(status, reason = nil)
+      @status = status
+      @reason = reason
+      super(default_message)
+    end
+
+    private
+
+    def default_message
+      case status
+      when :non_differentiable
+        "Expression is not differentiable#{detail}"
+      when :unknown_derivative
+        "No derivative rule is registered#{detail}"
+      when :function_error
+        "Function derivative failed#{detail}"
+      else
+        "Gradient evaluation failed#{detail}"
+      end
+    end
+
+    def detail
+      reason ? ": #{reason}" : ""
+    end
+  end
 end

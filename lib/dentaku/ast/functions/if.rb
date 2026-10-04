@@ -31,6 +31,10 @@ module Dentaku
         :condition
       end
 
+      def self.invoke(predicate, left, right)
+        predicate ? left : right
+      end
+
       def type
         left.type
       end

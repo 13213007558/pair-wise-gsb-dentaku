@@ -1,6 +1,7 @@
 require "bigdecimal"
 require "concurrent"
 require "dentaku/calculator"
+require "dentaku/gradient_result"
 require "dentaku/version"
 
 module Dentaku
@@ -15,6 +16,14 @@ module Dentaku
 
   def self.evaluate!(expression, data = {}, &block)
     calculator.value.evaluate!(expression, data, &block)
+  end
+
+  def self.gradient(expression, data = {}, &block)
+    calculator.value.gradient(expression, data, &block)
+  end
+
+  def self.gradient!(expression, data = {})
+    calculator.value.gradient!(expression, data)
   end
 
   def self.enable_caching!

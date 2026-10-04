@@ -429,6 +429,46 @@ c.evaluate('rrrrround!(8.2) + округлить(8.4)')
 # 16
 ```
 
+GRADIENTS
+---------
+
+gradient! evaluates a numeric expression and returns a Dentaku::GradientResult
+containing the value, analytic partial derivatives, and a status.
+
+```ruby
+> c = Dentaku::Calculator.new
+> result = c.gradient!('x^2 + y * 3', x: 4, y: 2)
+> result.value     #=> 22
+> result.gradient  #=> { "x" => 8, "y" => 3 }
+> result.status    #=> :ok
+```
+
+Derivatives are computed while traversing the parsed expression. Dentaku does
+not perturb inputs. Unselected IF and CASE branches are neither evaluated nor
+differentiated. Repeated occurrences of a variable are accumulated into one
+gradient entry, and shared formula references are evaluated once.
+
+Custom functions declare a derivative with derivative:. The lambda receives
+the function arguments and may optionally receive the function result as its
+last argument. Return one numeric partial derivative per argument.
+
+```ruby
+> c.add_function(
+>   :power_cost,
+>   :numeric,
+>   ->(units, rate) { units ** rate },
+>   derivative: ->(units, rate, result) {
+>     [result * rate / units, result * Math.log(units)]
+>   }
+> )
+> c.gradient!('power_cost(units, rate)', units: 2, rate: 3).gradient
+#=> { "units" => 12.0, "rate" => 5.545177444479562 }
+```
+
+The non-bang gradient method returns a failed result instead of raising.
+Possible non-ok statuses are :non_differentiable, :unknown_derivative, and
+:function_error.
+
 THANKS
 ------
 

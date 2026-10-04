@@ -3,6 +3,15 @@ require_relative '../function'
 module Dentaku
   module AST
     class Count < Function
+      def self.invoke(*args)
+        if args.length == 1
+          first_arg = args.first
+          return first_arg.length if first_arg.respond_to?(:length)
+        end
+
+        args.length
+      end
+
       def self.min_param_count
         0
       end
@@ -12,12 +21,7 @@ module Dentaku
       end
 
       def value(context = {})
-        if @args.length == 1
-          first_arg = @args[0].value(context)
-          return first_arg.length if first_arg.respond_to?(:length)
-        end
-
-        @args.length
+        self.class.invoke(*@args.map { |arg| arg.value(context) })
       end
     end
   end

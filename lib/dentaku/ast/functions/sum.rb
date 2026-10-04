@@ -1,12 +1,19 @@
 require_relative '../function'
 
-Dentaku::AST::Function.register(:sum, :numeric, ->(*args) {
+implementation = lambda do |*args|
   if args.empty?
     raise Dentaku::ArgumentError.for(
-        :too_few_arguments,
-        function_name: 'SUM', expected: 1.., actual: 0
+      :too_few_arguments,
+      function_name: 'SUM', expected: 1.., actual: 0
     )
   end
 
   args.flatten.map { |arg| Dentaku::NumericParser.ensure_numeric!(arg) }.reduce(0, :+)
-})
+end
+
+Dentaku::AST::Function.register(
+  :sum,
+  :numeric,
+  implementation,
+  derivative: ->(*args) { args.flatten.map { 1 } }
+)

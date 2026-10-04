@@ -8,7 +8,7 @@ module Dentaku
         nil
       end
 
-      def register(name, type, implementation, callback = nil, volatile: false)
+      def register(name, type, implementation, callback = nil, volatile: false, derivative: nil)
         function = Class.new(Function) do
           def self.name=(name)
             @name = name.to_s
@@ -65,6 +65,14 @@ module Dentaku
             @volatile
           end
 
+          def self.derivative=(derivative)
+            @derivative = derivative
+          end
+
+          def self.derivative
+            @derivative
+          end
+
           def self.arity
             @implementation.arity < 0 ? nil : @implementation.arity
           end
@@ -79,7 +87,15 @@ module Dentaku
 
           def value(context = {})
             args = @args.map { |a| a.value(context) }
-            self.class.implementation.call(*args)
+            self.class.invoke(*args)
+          end
+
+          def self.invoke(*args)
+            @implementation.call(*args)
+          end
+
+          def self.invoke_with_evaluated_arguments(arguments, context)
+            invoke(*arguments.map { |node| node.value(context) })
           end
 
           def type
@@ -96,6 +112,7 @@ module Dentaku
         function.implementation = implementation
         function.callback = callback
         function.volatile = volatile
+        function.derivative = derivative
 
         self[function_name(name)] = function
       end

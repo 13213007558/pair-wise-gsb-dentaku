@@ -4,25 +4,15 @@ require_relative '../../exceptions'
 module Dentaku
   module AST
     class Xor < Function
-      def self.min_param_count
-        1
-      end
-
-      def self.max_param_count
-        Float::INFINITY
-      end
-
-      def value(context = {})
-        if @args.empty?
-          raise Dentaku::ArgumentError.for(
-            :too_few_arguments,
-            function_name: 'XOR', expected: 1.., actual: 0
-          )
-        end
+      def self.invoke(*args)
+        raise Dentaku::ArgumentError.for(
+          :too_few_arguments,
+          function_name: 'XOR', expected: 1.., actual: 0
+        ) if args.empty?
 
         true_arg_count = 0
-        @args.each do |arg|
-          case arg.value(context)
+        args.each do |arg|
+          case arg
           when TrueClass
             true_arg_count += 1
             break if true_arg_count > 1
@@ -36,6 +26,18 @@ module Dentaku
           end
         end
         true_arg_count == 1
+      end
+
+      def self.min_param_count
+        1
+      end
+
+      def self.max_param_count
+        Float::INFINITY
+      end
+
+      def value(context = {})
+        self.class.invoke(*@args.map { |arg| arg.value(context) })
       end
     end
   end
