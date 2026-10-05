@@ -93,6 +93,7 @@ describe TestVisitor do
       :Bitwise,
       :Combinator,
       :Comparator,
+      :ExpressionFunction,
       :Function,
       :FunctionRegistry,
       :Grouping,

@@ -104,6 +104,12 @@ module Dentaku
         self[function_name(name)] = function_class
       end
 
+      # looks up only this registry (no fallback to the default registry)
+      def own(name)
+        # fetch(): Hash#[] would call the zero-arg default() override on a miss
+        fetch(function_name(name), nil)
+      end
+
       def default
         self.class.default
       end

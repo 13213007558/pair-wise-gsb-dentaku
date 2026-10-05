@@ -10,11 +10,14 @@ module Dentaku
   class Calculator
     include StringCasing
     attr_reader :result, :memory, :tokenizer, :case_sensitive,
-                :nested_data_support, :ast_cache, :raw_date_literals
+                :nested_data_support, :ast_cache, :raw_date_literals,
+                :max_function_depth, :max_function_operations
 
     def initialize(case_sensitive: false, aliases: nil, nested_data_support: true,
                    raw_date_literals: true, ast_cache: {},
-                   cache_ast: nil, cache_dependency_order: nil)
+                   cache_ast: nil, cache_dependency_order: nil,
+                   max_function_depth: CallBudget::DEFAULT_MAX_DEPTH,
+                   max_function_operations: CallBudget::DEFAULT_MAX_OPERATIONS)
       clear
       @tokenizer = Tokenizer.new
       @case_sensitive = case_sensitive
@@ -26,6 +29,8 @@ module Dentaku
       @cache_dependency_order = cache_dependency_order
       @disable_ast_cache = false
       @function_registry = Dentaku::AST::FunctionRegistry.new
+      @max_function_depth = max_function_depth
+      @max_function_operations = max_function_operations
     end
 
     # explicitly configured aliases win; otherwise the module-level default is
@@ -50,6 +55,53 @@ module Dentaku
     def add_functions(functions)
       functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
       self
+    end
+
+    # Defines a function from a Dentaku expression instead of a Ruby lambda:
+    #
+    #   calculator.define_function("margin(revenue, cost) = (revenue - cost) / revenue")
+    #   calculator.define_function(:margin, [:revenue, :cost], "(revenue - cost) / revenue")
+    #   calculator.define_function(:pay, [:price, :qty, :total], "total",
+    #                              defaults: { qty: 1, total: "price * qty" },
+    #                              constants: { tax_rate: 0.1 })
+    #
+    # The body sees only its parameters and the constants captured here --
+    # never the caller's variables. Redefining a name registers a new
+    # version; formulas compiled earlier keep the version they were compiled
+    # against (inspectable via node.class.definition), while newly parsed
+    # formulas use the latest version. Returns the FunctionDefinition.
+    def define_function(name, params = nil, body = nil, defaults: {}, constants: {})
+      if params.nil? && body.nil?
+        name, params, inline_defaults, body = FunctionDefinition.parse(name)
+        defaults = inline_defaults.merge(defaults)
+      end
+
+      definition = AST::ExpressionFunction.define(
+        @function_registry,
+        standardize_case(name.to_s),
+        params.map { |param| standardize_case(param.to_s) },
+        parse: ->(source) { parse_function_source(source) },
+        body: body,
+        defaults: defaults.transform_keys { |key| standardize_case(key.to_s) },
+        constants: constants.transform_keys { |key| standardize_case(key.to_s) }
+      )
+
+      # previously cached ASTs are pinned to older versions of this (or a
+      # forward-declared) function; drop them so re-parsed formulas bind the
+      # current versions
+      clear_cache
+      definition
+    end
+
+    # the FunctionDefinition a formula parsed now would bind to, or nil if
+    # the name is not an expression-defined function on this calculator
+    def function_definition(name)
+      klass = @function_registry.own(standardize_case(name.to_s))
+      AST::ExpressionFunction.expression_class?(klass) && klass.installed? ? klass.definition : nil
+    end
+
+    def function_version(name)
+      function_definition(name)&.version
     end
 
     def disable_cache
@@ -167,7 +219,25 @@ module Dentaku
     end
 
     def evaluation_context(data, evaluation_mode)
-      data.key?(:__evaluation_mode) ? data : data.merge(__evaluation_mode: evaluation_mode)
+      context = data.key?(:__evaluation_mode) ? data : data.merge(__evaluation_mode: evaluation_mode)
+      return context if context.key?(:__function_budget)
+
+      context.merge(__function_budget: CallBudget.new(
+        max_depth: max_function_depth,
+        max_operations: max_function_operations
+      ))
+    end
+
+    private def parse_function_source(source)
+      options = {
+        aliases: aliases,
+        case_sensitive: case_sensitive,
+        function_registry: AST::ExpressionFunction::ForwardRegistry.new(@function_registry),
+        raw_date_literals: raw_date_literals
+      }
+
+      tokens = tokenizer.tokenize(source.to_s, options)
+      Parser.new(tokens, options).parse
     end
 
     def store(key_or_hash, value = nil)

@@ -402,6 +402,94 @@ The predicate itself is then evaluated exactly once per `evaluate!` call,
 at evaluation time.  In `add_functions`, pass volatility as a fifth tuple
 element: `[:user_level, :numeric, -> { ... }, nil, true]`.
 
+EXPRESSION-DEFINED FUNCTIONS
+----------------------------
+
+When the people writing formulas should not have to write Ruby, functions can
+be defined from Dentaku expressions with `Calculator#define_function`:
+
+```ruby
+> c = Dentaku::Calculator.new
+> c.define_function("margin(revenue, cost) = (revenue - cost) / revenue")
+> c.evaluate!("margin(100, 40)")
+#=> 0.6
+> c.evaluate!("round(margin(100, 40) * 100, 1)")
+#=> 60.0
+```
+
+The same definition can be given in pieces, and parameters can declare
+defaults (a default may reference the parameters declared before it):
+
+```ruby
+> c.define_function(:pay, [:price, :qty, :total], "total",
+                    defaults: { qty: 1, total: "price * qty" })
+> c.evaluate!("pay(10)")
+#=> 10
+> c.evaluate!("pay(10, 3)")
+#=> 30
+```
+
+Scoping rules are fixed:
+
+* The body sees exactly its parameters and the constants captured at
+  definition time -- never the caller's variables. Referencing any other
+  name is rejected when the function is defined.
+* Parameters (including defaults) shadow same-named constants, and a
+  `store` of a same-named variable by the caller never reaches the body:
+
+```ruby
+> c.define_function(:add_tax, [:price], "price * (1 + tax_rate)",
+                    constants: { tax_rate: 0.1 })
+> c.store("tax_rate", 0.9) { c.evaluate!("add_tax(100)") }
+#=> 110.0
+```
+
+* Functions can call each other, and a body may reference a function that
+  is only defined later; the reference is filled in when the definition
+  arrives, which allows mutual recursion:
+
+```ruby
+> c.define_function("is_even(n) = if(n = 0, true, is_odd(n - 1))")
+> c.define_function("is_odd(n) = if(n = 0, false, is_even(n - 1))")
+> c.evaluate!("is_even(10)")
+#=> true
+```
+
+* Recursion (direct or mutual) always targets the function's own version
+  and is bounded by the call budget (see below).
+
+Each `define_function` of the same name registers a new version. Formulas
+compiled earlier keep evaluating against the version they were compiled
+against, and the binding is inspectable:
+
+```ruby
+> c.define_function(:dbl, [:x], "x * 2")
+> compiled = c.ast("dbl(21)")
+> c.define_function(:dbl, [:x], "x * 3")
+> c.function_version(:dbl)
+#=> 2
+> c.evaluate!(compiled)   # still version 1
+#=> 42
+> compiled.class.definition
+#=> #<Dentaku::FunctionDefinition dbl(x) v1>
+```
+
+Runaway recursion is contained by two budgets, configurable per calculator
+(`max_function_depth:`, default 100, and `max_function_operations:`,
+default 10_000, counting every expression-function invocation in the call
+graph). Exceeding either raises `Dentaku::FunctionCallBudgetError`, and any
+error raised inside a function body carries the function call chain:
+
+```ruby
+> c.define_function("boom(x) = boom(x + 1)")
+> c.evaluate!("boom(1)")
+#=> Dentaku::FunctionCallBudgetError: exceeded maximum function call depth
+#   (100) while evaluating boom(x) v1 -> boom(x) v1 -> ... -> boom(x) v1
+```
+
+Function bodies evaluate in their own scope, so a failed call never leaves
+anything behind in the calculator's memory.
+
 FUNCTION ALIASES
 ----------------
 

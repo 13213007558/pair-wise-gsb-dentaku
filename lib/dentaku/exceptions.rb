@@ -4,6 +4,12 @@ module Dentaku
   # built-ins (Dentaku::ArgumentError, Dentaku::ZeroDivisionError).
   module Error
     attr_accessor :assigned_to
+
+    # Names ("name(vN)") of the expression-defined functions whose evaluation
+    # was in progress when this error was raised, outermost first. Set by
+    # AST::ExpressionFunction at the innermost frame; nil for errors raised
+    # outside any expression-defined function.
+    attr_accessor :call_chain
   end
 
   class BaseError < StandardError
@@ -15,6 +21,47 @@ module Dentaku
 
     def initialize(unbound_variables)
       @unbound_variables = unbound_variables
+    end
+  end
+
+  # Raised when an expression-defined function is invoked but only a forward
+  # declaration exists for its name (it was referenced by another function's
+  # body before ever being defined).
+  class UndefinedFunctionError < BaseError
+    attr_reader :function_name
+
+    def initialize(function_name)
+      @function_name = function_name
+      super("function '#{function_name}' is referenced but was never defined")
+    end
+  end
+
+  # Raised when evaluating expression-defined functions exceeds the configured
+  # call-depth or total-operation budget. Carries the function call chain so
+  # runaway (mutual) recursion can be diagnosed.
+  class FunctionCallBudgetError < BaseError
+    attr_reader :reason, :limit, :call_chain
+
+    def initialize(reason, limit:, call_chain:)
+      @reason = reason
+      @limit = limit
+      @call_chain = call_chain
+      super(default_message)
+    end
+
+    private
+
+    def default_message
+      what = reason == :depth ? "maximum function call depth" : "function operation budget"
+      "exceeded #{what} (#{limit}) while evaluating #{summarized_chain}"
+    end
+
+    # the full chain stays available via #call_chain; the message shows the
+    # first and last few frames so runaway recursion stays readable
+    def summarized_chain
+      return call_chain.join(" -> ") if call_chain.length <= 10
+
+      (call_chain.first(5) + ["..."] + call_chain.last(4)).join(" -> ")
     end
   end
 
