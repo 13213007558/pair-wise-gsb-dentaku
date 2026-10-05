@@ -12,6 +12,7 @@ module Dentaku
     def tokenize(string, options = {})
       @nesting = 0
       @tokens  = []
+      @offset  = 0
       @aliases = options.fetch(:aliases, global_aliases)
       input    = strip_comments(string.to_s.dup)
       input    = replace_aliases(input)
@@ -44,6 +45,9 @@ module Dentaku
     def scan(string, scanner)
       if tokens = scanner.scan(string, last_token)
         tokens.each do |token|
+          token.location = @offset
+          @offset += token.length
+
           if token.empty?
             fail! :unexpected_zero_width_match,
                   token_category: token.category, at: string

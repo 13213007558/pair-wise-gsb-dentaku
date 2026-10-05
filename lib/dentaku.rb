@@ -1,6 +1,7 @@
 require "bigdecimal"
 require "concurrent"
 require "dentaku/calculator"
+require "dentaku/type_checker"
 require "dentaku/version"
 
 module Dentaku

@@ -282,6 +282,91 @@ be evaluated (e.g. raise `ZeroDivisionError`).  The non-bang `solve` method will
 find as many solutions as possible and return the symbol `:undefined` for the
 problem formulas.
 
+STATIC TYPE CHECKING
+---------------------------------
+
+Formulas usually have to be published before any real data exists. The type
+checker validates a formula statically: given variable type declarations and
+function signatures, it computes the result type of an expression without
+evaluating it, or reports the set of mutually conflicting constraints.
+
+```ruby
+checker = Dentaku::TypeChecker.new(
+  variables: { 'price' => :numeric, 'tags' => [:array, :string] },
+  functions: { 'first_of' => { params: [[:array, :a]], returns: :a } }
+)
+
+result = checker.check('price * 2')
+result.ok?        #=> true
+result.type_spec  #=> :numeric
+
+bad = checker.check('name * 2')   # with 'name' declared as :string
+bad.ok?           #=> false
+bad.conflict.constraints
+#=> ["left operand of `name * 2` must be numeric, at position 5",
+#    "`name` is declared as string"]
+bad.conflict.position  #=> 5 (offset of `*` in the expression)
+```
+
+Types are `:numeric`, `:logical`, `:string`, `:datetime`, `:duration`, and
+arrays written as `[:array, element_type]` (optionally with a fixed length,
+`[:array, :numeric, 3]`). Array operations track dimensions: `MAP` preserves
+the length of its input, `INTERCEPT` requires both inputs to have the same
+length, and array literals check that their elements share a common type.
+`IF` (and `CASE`/`SWITCH`) require all branches to have a common result type.
+
+In function signatures, any symbol that is not a primitive is a type
+variable. Variables are instantiated fresh for every call site, so one call
+of a polymorphic function never affects another:
+
+```ruby
+# first_of: [:array, :a] -> :a
+checker.check('IF(first_of(scores) > 0, first_of(names), "none")')
+#=> ok, names and scores keep their own element types
+```
+
+Custom functions without a declared signature are not executed to guess
+their type; their result is simply `unknown`, and the checker explains how
+far the unknownness reaches:
+
+```ruby
+result = checker.check('CONCAT(mystery(a), "!")')
+result.unknown?                  #=> true
+result.unknowns.first.message
+#=> "function `mystery` has no declared signature ... unknown propagates
+#    to: argument 1 of `CONCAT(mystery(a), "!")` -> the whole expression"
+```
+
+Undeclared variables are inferred from usage and reported back:
+
+```ruby
+checker.check('x + 1').variables  #=> { 'x' => :numeric }
+```
+
+To validate a set of formulas that build on each other, use `check_all`:
+each formula's result type becomes the type of its name for the following
+formulas, so conflicts that only appear once formulas are connected surface
+here:
+
+```ruby
+results = checker.check_all(
+  'greeting' => 'IF(vip, "welcome", "hello")',
+  'discount' => 'greeting * 2'
+)
+results['discount'].conflict.constraints
+#=> ["in formula `discount`, left operand of `greeting * 2` must be numeric",
+#    "in formula `greeting`, formula `greeting` produces string"]
+```
+
+The same interface is available on a calculator (so functions registered
+with `add_function` are visible to the checker):
+
+```ruby
+calc.check_types('price * 2', variables: { 'price' => :numeric })
+calc.check_all_types({ 'total' => 'price * 2', 'label' => 'CONCAT(total, "u")' },
+                     variables: { 'price' => :numeric })
+```
+
 INLINE COMMENTS
 ---------------------------------
 

@@ -11,6 +11,7 @@ module Dentaku
     include StringCasing
     attr_reader :result, :memory, :tokenizer, :case_sensitive,
                 :nested_data_support, :ast_cache, :raw_date_literals
+    attr_reader :function_registry
 
     def initialize(case_sensitive: false, aliases: nil, nested_data_support: true,
                    raw_date_literals: true, ast_cache: {},
@@ -99,6 +100,26 @@ module Dentaku
 
     def solve(expression_hash, &block)
       BulkExpressionSolver.new(expression_hash, self).solve(&block)
+    end
+
+    # statically determine the result type of an expression without
+    # evaluating it; see Dentaku::TypeChecker
+    def check_types(expression, variables: {}, functions: {})
+      TypeChecker.new(
+        variables: variables, functions: functions,
+        calculator: self, case_sensitive: case_sensitive
+      ).check(expression)
+    end
+
+    # statically check several formulas that build on each other:
+    # each formula's result type becomes the type of its name for the
+    # following formulas
+    def check_all_types(formulas = nil, variables: {}, functions: {}, **named_formulas)
+      formulas = (formulas || {}).merge(named_formulas)
+      TypeChecker.new(
+        variables: variables, functions: functions,
+        calculator: self, case_sensitive: case_sensitive
+      ).check_all(formulas)
     end
 
     def dependencies(expression, context = {})

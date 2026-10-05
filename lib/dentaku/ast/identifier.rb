@@ -38,6 +38,10 @@ module Dentaku
         visitor.visit_identifier(self)
       end
 
+      def source_token
+        @token
+      end
+
       def to_s
         identifier.to_s
       end

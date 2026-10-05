@@ -1,6 +1,9 @@
 module Dentaku
   class Token
     attr_reader :category, :raw_value, :value
+    # character offset of this token in the tokenized input, assigned by
+    # the Tokenizer; nil for tokens created by other means
+    attr_accessor :location
 
     def initialize(category, value, raw_value = nil)
       @category  = category

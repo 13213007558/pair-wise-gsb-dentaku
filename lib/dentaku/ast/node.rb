@@ -1,6 +1,10 @@
 module Dentaku
   module AST
     class Node
+      # token this node was parsed from, when available; used to map
+      # static-analysis results back to the source expression
+      attr_writer :source_token
+
       # reserved context key (double-underscore prefix, like
       # __evaluation_mode) that switches dependencies() into static mode:
       # guards are never evaluated and every branch is reported
@@ -34,6 +38,15 @@ module Dentaku
 
       def type
         nil
+      end
+
+      def source_token
+        @source_token
+      end
+
+      # character offset in the tokenized expression, or nil when unknown
+      def source_location
+        source_token && source_token.location
       end
 
       def name
