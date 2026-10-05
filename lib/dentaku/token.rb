@@ -1,11 +1,27 @@
 module Dentaku
   class Token
-    attr_reader :category, :raw_value, :value
+    attr_reader :category, :raw_value, :value, :start_position, :end_position
 
-    def initialize(category, value, raw_value = nil)
+    def initialize(category, value, raw_value = nil, start_position: nil, end_position: nil)
       @category  = category
       @value     = value
       @raw_value = raw_value
+      @start_position = start_position
+      @end_position = end_position
+    end
+
+    # zero-based [start, exclusive_end) byte offsets in the original
+    # expression string; populated by the tokenizer
+    def position
+      return nil if @start_position.nil?
+
+      [@start_position, @end_position || @start_position + length]
+    end
+
+    def with_position(start_position, end_position = nil)
+      @start_position = start_position
+      @end_position = end_position || start_position + length
+      self
     end
 
     def to_s

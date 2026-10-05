@@ -47,6 +47,49 @@ module Dentaku
       self
     end
 
+    # register a static type signature for a (possibly polymorphic)
+    # function, e.g. calculator.add_type_signature(:first, "array(T) -> T")
+    def add_type_signature(name, signature)
+      type_signatures[name.to_s.downcase] =
+        signature.is_a?(Dentaku::TypeChecker::Signature) ? signature : Dentaku::TypeChecker::Signature.parse(signature)
+      self
+    end
+
+    def type_signatures
+      @type_signatures ||= {}
+    end
+
+    # Statically check one expression against declared variable types and
+    # function signatures, without evaluating anything.
+    #
+    #   result = calculator.type_check("price * quantity", price: :numeric)
+    #   result.ok?           #=> true
+    #   result.type          #=> Dentaku::TypeChecker::Type::Scalar
+    #   result.rendered_type #=> "numeric"
+    #
+    # On failure, result.conflicts contains contradictory constraints, each
+    # carrying source ranges pointing at arguments/operations.
+    def type_check(expression, types = {}, signatures: nil, **declarations)
+      types = types.merge(declarations) unless declarations.empty?
+      checker = Dentaku::TypeChecker::Checker.new(
+        calculator: self,
+        signatures: type_signatures.merge(signatures || {})
+      )
+      checker.check(expression, types: types, signatures: signatures || {})
+    end
+
+    # Statically check several connected formulas at once. A conflict that
+    # only appears once formulas are linked (e.g. one output used as a
+    # string array elsewhere as a numeric array) is reported here.
+    def type_check_batch(formulas, types = {}, signatures: nil, **declarations)
+      types = types.merge(declarations) unless declarations.empty?
+      checker = Dentaku::TypeChecker::Checker.new(
+        calculator: self,
+        signatures: type_signatures.merge(signatures || {})
+      )
+      checker.check_batch(formulas, types: types, signatures: signatures || {})
+    end
+
     def add_functions(functions)
       functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
       self

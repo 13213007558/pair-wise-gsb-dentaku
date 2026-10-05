@@ -38,10 +38,13 @@ module Dentaku
       @function_registry = options.fetch(:function_registry, nil)
       @case_sensitive    = options.fetch(:case_sensitive, false)
       @skip_indices      = []
+      @operation_tokens  = []
+      @skip_type_checks  = options.fetch(:skip_type_checks, false)
     end
 
-    def consume(count = 2)
+    def consume(count = 2, closing_token = nil)
       operation = operations.pop
+      op_token = @operation_tokens.pop
       fail! :invalid_statement if operation.nil?
 
       output_size = output.length
@@ -62,11 +65,15 @@ module Dentaku
       args = []
       if operation == AST::Array && output.empty?
         # special case: empty array literal '{}'
-        output.push(operation.new)
+        node = operation.new
+        attach_range(node, op_token, [], closing_token)
+        output.push(node)
       else
         fail! :invalid_statement if output_size < args_size
         args = Array.new(args_size) { output.pop }.reverse
-        output.push operation.new(*args)
+        node = build_node(operation, args)
+        attach_range(node, op_token, args, closing_token)
+        output.push(node)
       end
 
       if operation.respond_to?(:callback) && !operation.callback.nil?
@@ -76,7 +83,49 @@ module Dentaku
       raise if e.is_a?(Dentaku::ArgumentError)
       raise Dentaku::ArgumentError.for(:invalid_value), e.message
     rescue NodeError => e
+      raise if @skip_type_checks
       raise ParseError.for(:node_invalid, operation: operation, operand: e.operand, expected: e.expected, actual: e.actual), e.message
+    end
+
+    # under static analysis the AST constructors' eager operand validation
+    # must not reject the tree; we still need the node so its own type rule
+    # can report a located conflict. Build it without the type check by
+    # bypassing the constructor and setting the fields directly.
+    def build_node(operation, args)
+      operation.new(*args)
+    rescue NodeError
+      raise unless @skip_type_checks
+
+      node = operation.allocate
+      initialize_node_without_validation(node, operation, args)
+      node
+    end
+
+    def initialize_node_without_validation(node, operation, args)
+      if operation <= AST::Negation
+        node.instance_variable_set(:@node, args[0])
+      else
+        node.instance_variable_set(:@left, args[0])
+        node.instance_variable_set(:@right, args[1]) if args[1]
+      end
+    end
+
+    # each entry on the operation stack carries the token that introduced it
+    # so the node can report a [start, finish) range in the source expression
+    def push_operation(operation_class, token)
+      operations.push(operation_class)
+      @operation_tokens.push(token)
+    end
+
+    def attach_range(node, op_token, args, closing_token)
+      starts = [op_token&.start_position] + args.map { |a| a.respond_to?(:source_range) && a.source_range&.first }
+      ends = [(closing_token || op_token)&.end_position] +
+             args.map { |a| a.respond_to?(:source_range) && a.source_range&.last }
+      starts = starts.compact
+      ends = ends.compact
+      return if starts.empty? || ends.empty?
+
+      node.source_range = [starts.min, ends.max]
     end
 
     def parse
@@ -149,14 +198,14 @@ module Dentaku
       else
         consume while operations.last && operations.last < AST::Operation && op_class.precedence <= operations.last.precedence
       end
-      operations.push op_class
+      push_operation(op_class, token)
     end
 
     def handle_function(token)
       func = function(token)
       fail! :undefined_function, function_name: token.value if func.nil?
       arities.push 0
-      operations.push func
+      push_operation(func, token)
     end
 
     def handle_case(token)
@@ -167,28 +216,28 @@ module Dentaku
       case token.value
       when :open
         # Start a new CASE context.
-        operations.push AST::Case
+        push_operation(AST::Case, token)
         arities.push(0)
 
       when :close
         # Finalize any trailing THEN/ELSE expression still on the stack.
         if operations[token_index] == AST::CaseThen
           consume_until(AST::Case)
-          operations.push(AST::CaseConditional)
-          consume(2)
+          push_operation(AST::CaseConditional, nil)
+          consume(2, token)
           arities[-1] += 1
         elsif operations[token_index] == AST::CaseElse
           consume_until(AST::Case)
           arities[-1] += 1
         end
         fail! :unprocessed_token, token_name: token.value unless operations.last == AST::Case
-        consume(arities.pop.succ)
+        consume(arities.pop.succ, token)
 
       when :when
         if operations[token_index] == AST::CaseThen
           # Close out previous WHEN/THEN pair.
           consume_until([AST::CaseWhen, AST::Case])
-          operations.push(AST::CaseConditional)
+          push_operation(AST::CaseConditional, nil)
           consume(2)
           arities[-1] += 1
         elsif operations[token_index].nil? ||
@@ -196,25 +245,25 @@ module Dentaku
           # First WHEN: fold any operators pending from an unparenthesized
           # switch expression, then finalize the switch variable.
           consume_until(AST::Case)
-          operations.push(AST::CaseSwitchVariable)
+          push_operation(AST::CaseSwitchVariable, nil)
           consume
         end
-        operations.push(AST::CaseWhen)
+        push_operation(AST::CaseWhen, token)
 
       when :then
         if operations[token_index] == AST::CaseWhen
           consume_until([AST::CaseThen, AST::Case])
         end
-        operations.push(AST::CaseThen)
+        push_operation(AST::CaseThen, token)
 
       when :else
         if operations[token_index] == AST::CaseThen
           consume_until(AST::Case)
-          operations.push(AST::CaseConditional)
+          push_operation(AST::CaseConditional, nil)
           consume(2)
           arities[-1] += 1
         end
-        operations.push(AST::CaseElse)
+        push_operation(AST::CaseElse, token)
 
       else
         fail! :unknown_case_token, token_name: token.value
@@ -234,25 +283,25 @@ module Dentaku
     def handle_access(token)
       case token.value
       when :lbracket
-        operations.push AST::Access
+        push_operation(AST::Access, token)
 
       when :rbracket
         consume while operations.any? && operations.last != AST::Access
         fail! :unbalanced_bracket, token: token unless operations.last == AST::Access
-        consume
+        consume(2, token)
       end
     end
 
     def handle_array(token)
       case token.value
       when :array_start
-        operations.push AST::Array
+        push_operation(AST::Array, token)
         arities.push 0
 
       when :array_end
         consume while operations.any? && operations.last != AST::Array
         fail! :unbalanced_bracket, token: token unless operations.last == AST::Array
-        consume(arities.pop.succ)
+        consume(arities.pop.succ, token)
       end
     end
 
@@ -266,15 +315,16 @@ module Dentaku
           arities.pop
           consume(0)
         else
-          operations.push AST::Grouping
+          push_operation(AST::Grouping, token)
         end
 
       when :close
         consume while operations.any? && operations.last != AST::Grouping
         lparen = operations.pop
+        @operation_tokens.pop
         fail! :unbalanced_parenthesis, token: token unless lparen == AST::Grouping
         if operations.last && operations.last < AST::Function
-          consume(arities.pop.succ)
+          consume(arities.pop.succ, token)
         end
 
       when :comma

@@ -7,6 +7,10 @@ module Dentaku
       STATIC_MODE_KEY = "__static_dependencies".freeze
       STATIC_CONTEXT = { STATIC_MODE_KEY => true }.freeze
 
+      # [start, exclusive_end) byte offsets in the source expression,
+      # attached by the parser; nil for nodes without a source span
+      attr_accessor :source_range
+
       def self.precedence
         0
       end

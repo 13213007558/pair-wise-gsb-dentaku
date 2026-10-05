@@ -7,6 +7,7 @@ module Dentaku
         @token = token
         @value = token.value
         @type  = token.category
+        @source_range = token.position
       end
 
       def value(*)

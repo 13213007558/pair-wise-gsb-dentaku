@@ -402,6 +402,90 @@ The predicate itself is then evaluated exactly once per `evaluate!` call,
 at evaluation time.  In `add_functions`, pass volatility as a fifth tuple
 element: `[:user_level, :numeric, -> { ... }, nil, true]`.
 
+STATIC TYPE CHECKING
+--------------------
+
+Formulas are often authored and published before the data they run on exists.
+`type_check` validates a formula against *declarations* only -- it never
+evaluates it and never calls a function to guess its type:
+
+```ruby
+> c = Dentaku::Calculator.new
+> result = c.type_check('price * quantity', price: :numeric, quantity: :numeric)
+> result.ok?            #=> true
+> result.rendered_type  #=> "numeric"
+```
+
+Supported types are `numeric`, `logical` (alias `bool`/`boolean`), `string`
+(`text`/`str`), `date` (`datetime`), and `array(T)`.  Declarations are passed
+as symbols or strings (`items: 'array(string)'`).
+
+When constraints contradict each other, the result lists the conflicts with
+source offsets pointing at the responsible parameter or operation:
+
+```ruby
+> result = c.type_check('IF(flag, 1, "x")', flag: :logical)
+> result.ok?                  #=> false
+> result.conflicts.first.message
+#=> "cannot unify numeric with string at IF true branch ..."
+> result.conflicts.first.ranges #=> [[9, 10], [12, 15], [0, 17]]
+```
+
+### Polymorphic function signatures
+
+Custom functions can carry a static signature written as
+`"params -> result"`.  Type variables (capitalized identifiers) are
+instantiated *fresh at every call*, so the same polymorphic function can be
+used independently on string arrays and numeric arrays:
+
+```ruby
+> c.add_function(:first, :string, ->(a) { a.first })
+> c.add_type_signature(:first, 'array(T) -> T')
+> c.type_check('FIRST(names)', names: 'array(string)').rendered_type
+#=> "string"
+> c.type_check('FIRST(nums) + 1', nums: 'array(numeric)').ok?
+#=> true
+```
+
+Variadic parameters use a trailing `*` (e.g. `numeric, numeric* -> numeric`),
+and optional parameters use `?` (e.g. `numeric, numeric? -> numeric`).
+
+### Unknowns and functions without signatures
+
+A custom function registered without a type signature is not evaluated to
+infer one.  Its result stays `unknown` (which unifies with anything), and
+the result reports both the cause and the range it influences:
+
+```ruby
+> c.add_function(:mystery, :string, ->(x) { x.to_s })
+> result = c.type_check('MYSTERY(x) + 1', x: :numeric)
+> result.ok?                       #=> true (no contradiction)
+> result.fully_known?              #=> false
+> result.unknowns.first.reason     #=> "function 'mystery' has no type signature"
+> result.unknowns.first.sites.map(&:label) #=> ["left operand of +"]
+```
+
+Undeclared variables are treated the same way: they do not fail the check,
+but they are listed so you know the result depends on information that was
+not published.
+
+### Connected formulas
+
+`type_check_batch` checks several formulas together, threading each named
+formula's result type into the formulas that reference it.  This surfaces
+conflicts that no single formula exhibits on its own:
+
+```ruby
+> result = c.type_check_batch(
+    { total: 'FIRST(names)', tax: 'total + 1' },
+    names: 'array(string)'
+  )
+> result.ok?                       #=> false
+> result.conflicts.first.formula   #=> :tax
+> result.conflicts.first.message
+#=> "cannot unify string with numeric at left operand of + (\"total\" @0)"
+```
+
 FUNCTION ALIASES
 ----------------
 
