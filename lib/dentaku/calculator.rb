@@ -2,6 +2,9 @@ require 'dentaku/bulk_expression_solver'
 require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
+require 'dentaku/interval'
+require 'dentaku/interval_evaluator'
+require 'dentaku/interval_result'
 require 'dentaku/parser'
 require 'dentaku/string_casing'
 require 'dentaku/token'
@@ -26,6 +29,7 @@ module Dentaku
       @cache_dependency_order = cache_dependency_order
       @disable_ast_cache = false
       @function_registry = Dentaku::AST::FunctionRegistry.new
+      @interval_rules = {}
     end
 
     # explicitly configured aliases win; otherwise the module-level default is
@@ -49,6 +53,30 @@ module Dentaku
 
     def add_functions(functions)
       functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
+      self
+    end
+
+    # Register a rule describing a custom function's image over interval
+    # arguments. The block receives one Dentaku::Interval per argument and
+    # must return an interval containing every attainable result. Functions
+    # without such a rule are widened to the full extended-real line in
+    # interval mode and flagged in the result notes.
+    def add_interval_function(name, type = :numeric, implementation = nil, &block)
+      body = block || implementation
+      raise ::ArgumentError, "interval rule for '#{name}' requires a block" unless body.respond_to?(:call)
+
+      unless @function_registry.get(name) || Dentaku::AST::Function.registry.get(name)
+        scalar = ->(*args) do
+          image = body.call(*args.map { |arg| Interval.point(arg) })
+          if type == :logical
+            image.point?
+          else
+            image.low
+          end
+        end
+        @function_registry.register(name, type, scalar)
+      end
+      @interval_rules[name.to_s.downcase] = body
       self
     end
 
@@ -91,6 +119,32 @@ module Dentaku
 
     private def evaluate_array!(expression, data = {}, &block)
       expression.map { |e| evaluate!(e, data, &block) }
+    end
+
+    # Interval evaluation. Numeric variables in +data+ may be Dentaku::Interval
+    # values or two-element [low, high] pairs. The returned IntervalResult
+    # encloses every value the expression can attain; its notes record branch
+    # merges, unknown function rules, unbounded images and outward rounding.
+    def evaluate_interval(expression, data = {}, precision: 16, &block)
+      evaluate_interval!(expression, data, precision: precision)
+    rescue Dentaku::Error => ex
+      block.call(expression, ex) if block_given?
+    end
+
+    def evaluate_interval!(expression, data = {}, precision: 16)
+      context = evaluation_context(data, :strict)
+      store(interval_context(context)) do
+        node = ast(expression)
+        unbound = node.dependencies(memory)
+        unless unbound.empty?
+          raise UnboundVariableError.new(unbound),
+                "no value provided for variables: #{unbound.uniq.join(', ')}"
+        end
+
+        IntervalEvaluator
+          .new(interval_rules: @interval_rules, precision: precision)
+          .evaluate(node, memory)
+      end
     end
 
     def solve!(expression_hash)
@@ -206,6 +260,19 @@ module Dentaku
       end
     end
     alias_method :bind, :store
+
+    private def interval_context(data)
+      pairs = pairs_to_store(data, nil)
+      converted = pairs.map do |key, value|
+        interval = if value.is_a?(::Array) && value.size == 2
+                     Interval.new(value.first, value.last)
+                   else
+                     value
+                   end
+        [key, interval]
+      end.to_h
+      data.merge(converted)
+    end
 
     private def pairs_to_store(key_or_hash, value)
       if value.nil?

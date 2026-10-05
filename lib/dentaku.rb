@@ -17,6 +17,14 @@ module Dentaku
     calculator.value.evaluate!(expression, data, &block)
   end
 
+  def self.evaluate_interval(expression, data = {}, precision: 16, &block)
+    calculator.value.evaluate_interval(expression, data, precision: precision, &block)
+  end
+
+  def self.evaluate_interval!(expression, data = {}, precision: 16)
+    calculator.value.evaluate_interval!(expression, data, precision: precision)
+  end
+
   def self.enable_caching!
     enable_ast_cache!
     enable_dependency_order_cache!

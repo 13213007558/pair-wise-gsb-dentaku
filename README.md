@@ -282,6 +282,81 @@ be evaluated (e.g. raise `ZeroDivisionError`).  The non-bang `solve` method will
 find as many solutions as possible and return the symbol `:undefined` for the
 problem formulas.
 
+INTERVAL EVALUATION
+-------------------
+
+When an input is only known to lie inside a range (for example a price in
+`[10, 12]` and a discount in `[0.9, 0.95]`), `evaluate_interval!` propagates
+those ranges through the expression and returns an interval that contains
+every value the expression can attain. This is interval arithmetic, not two
+pointwise evaluations: evaluating an expression at the interval endpoints can
+miss interior extrema. For example `x * (1 - x)` at the endpoints of
+`x in [0, 1]` only produces `0`, but evaluating at `x = 1/2` produces `1/4`;
+interval evaluation returns `[0, 1]`, a sound (possibly conservative)
+enclosure.
+
+```ruby
+calc = Dentaku::Calculator.new
+result = calc.evaluate_interval!(
+  "price * discount",
+  { price: Dentaku::Interval[10, 12],
+    discount: Dentaku::Interval[Rational("0.9"), Rational("0.95")] }
+)
+result.interval      #=> [9, 57/5]
+result.low           #=> 9
+result.high          #=> 57/5
+result.notes         #=> []  (no widening was needed)
+```
+
+Two-element `[low, high]` arrays are accepted as interval inputs as well.
+
+Supported operations: `+ - * /`, integer powers (`^`), `min`, `max`, `abs`,
+and comparison-driven `IF` (including `and` / `or` / `not` predicates). A
+shared variable is treated as the *same* unknown everywhere, so the result is
+the sound image of a single joint assignment rather than the image of
+independent copies.
+
+Comparisons use tri-state logic: when the outcome cannot be proved true or
+false, both feasible `IF` branches are evaluated and their images are merged,
+and the result carries an `:indeterminate_branch` note.
+
+Division distinguishes an unbounded image from an undefined point:
+
+```ruby
+result = calc.evaluate_interval!("1 / x", { x: Dentaku::Interval[-1, 2] })
+result.interval          #=> [-Infinity, Infinity]
+result.undefined_points  #=> [0]  (the zero divisor itself is excluded)
+result.notes.map(&:code) #=> [:unbounded_result]
+```
+
+A divisor that is exactly the single point `0` raises
+`Dentaku::ZeroDivisionError`.
+
+Finite endpoints are tracked internally as exact rationals. On return they are
+rounded **outward** (low toward -Infinity, high toward +Infinity) to 16
+significant digits, preserving the enclosure; pass `precision: nil` to keep
+exact `Rational` endpoints, or another number of significant digits. When
+rounding actually moves an endpoint, an `:outward_rounding` note is added.
+
+Custom functions only take part in interval mode when an interval rule is
+registered; the rule receives one `Dentaku::Interval` per argument and must
+return an interval containing every attainable result:
+
+```ruby
+calc.add_interval_function(:double) { |value|
+  Dentaku::Interval.new(value.low * 2, value.high * 2)
+}
+calc.evaluate_interval!("double(x)", { x: Dentaku::Interval[1, 3] }).interval
+#=> [2, 6]
+```
+
+A function without an interval rule is widened to the full extended-real line
+`[-Infinity, Infinity]` and flagged with an `:unknown_function_rule` note,
+so values are never silently dropped. Other note codes include
+`:unsupported_operation` (for example a non-integer exponent interval) and
+the flags described above; `result.widened?` reports whether any note was
+attached.
+
 INLINE COMMENTS
 ---------------------------------
 
