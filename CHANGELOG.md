@@ -1,5 +1,20 @@
 # Change Log
 
+## [Unreleased]
+- added interval evaluation: `Calculator#evaluate_interval` (and
+  `Dentaku.evaluate_interval`) evaluate an expression over interval-valued
+  inputs (`Dentaku::Interval`, `Range`, `[lo, hi]`, or scalars) and return a
+  result whose interval contains every value the expression can take.
+  Arithmetic rounds outward (lower bounds toward -Infinity, upper bounds
+  toward +Infinity), so float error only ever widens the result. Covers the
+  four arithmetic operators, integer powers, `MIN`/`MAX`/`ABS`, comparisons,
+  and `IF` -- an undecidable comparison merges both branches with a
+  `:branch_merge` relaxation, a divisor whose interval contains zero yields
+  an unbounded result with the undefined points reported separately, and
+  functions without a registered interval rule (`Calculator#add_interval_rule`
+  or `Dentaku::IntervalEvaluator.register_rule`) widen to unbounded with an
+  `:unknown_rule` relaxation.
+
 ## [v4.0.2] 2026-08-02
 - the 4.0.1 guard against arithmetic that rejects a well-typed operand only
   worked on Ruby 3.4+. Ruby 3.2 and 3.3 do not raise for an oversized

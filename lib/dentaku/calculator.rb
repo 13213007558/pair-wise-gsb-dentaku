@@ -2,6 +2,7 @@ require 'dentaku/bulk_expression_solver'
 require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
 require 'dentaku/flat_hash'
+require 'dentaku/interval_evaluator'
 require 'dentaku/parser'
 require 'dentaku/string_casing'
 require 'dentaku/token'
@@ -26,6 +27,7 @@ module Dentaku
       @cache_dependency_order = cache_dependency_order
       @disable_ast_cache = false
       @function_registry = Dentaku::AST::FunctionRegistry.new
+      @interval_rules = {}
     end
 
     # explicitly configured aliases win; otherwise the module-level default is
@@ -91,6 +93,35 @@ module Dentaku
 
     private def evaluate_array!(expression, data = {}, &block)
       expression.map { |e| evaluate!(e, data, &block) }
+    end
+
+    # Evaluates an expression over interval-valued inputs and returns an
+    # IntervalEvaluator::Result whose interval contains every value the
+    # expression can take. Inputs may be Dentaku::Interval, Numeric, Range,
+    # or [lo, hi] arrays; scalar values are treated as points. Widening
+    # (merged branches, functions without interval rules, unsupported
+    # operations) is reported in the result's relaxations, and points where
+    # the expression is undefined (a divisor that can be zero) in its
+    # undefined list.
+    def evaluate_interval(expression, data = {}, **kwargs)
+      rules = kwargs.delete(:rules) || {}
+      data = kwargs.merge(data)
+      prepared = data.map { |key, value| [key, value.is_a?(String) ? ast(value) : value] }.to_h
+
+      store(prepared) do
+        context = memory.transform_values { |value| value.is_a?(String) ? ast(value) : value }
+        evaluator = IntervalEvaluator.new(rules: @interval_rules.merge(rules))
+        evaluator.evaluate(ast(expression), context)
+      end
+    end
+
+    # Registers an interval rule for a function on this calculator, so the
+    # function can participate in evaluate_interval. The rule receives the
+    # interval-evaluated arguments and returns a Dentaku::Interval (or a
+    # tri-state symbol for logical functions).
+    def add_interval_rule(name, &block)
+      @interval_rules[name.to_s.downcase] = block
+      self
     end
 
     def solve!(expression_hash)

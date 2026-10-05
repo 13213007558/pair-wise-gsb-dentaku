@@ -429,6 +429,65 @@ c.evaluate('rrrrround!(8.2) + округлить(8.4)')
 # 16
 ```
 
+INTERVAL EVALUATION
+--------------------
+
+When inputs are not exact numbers but ranges -- a price known to be between
+10 and 12, a discount somewhere in a range -- `evaluate_interval` computes
+an interval that contains every value the expression can take, instead of
+evaluating the endpoints separately and hoping nothing happens in between:
+
+```ruby
+> c = Dentaku::Calculator.new
+> r = c.evaluate_interval('price * (1 - discount)', price: [10, 12], discount: [0.1, 0.2])
+> r.interval
+#=> #<Dentaku::Interval [8.0, 10.8]>  (bounds shown rounded for readability)
+```
+
+Inputs may be `Dentaku::Interval`, a `Range`, a `[lo, hi]` array, or a
+scalar (treated as a point).  Variables stored on the calculator -- including
+formulas that reference other variables -- are shared with interval
+evaluation.  The result is conservative: it may be wider than the exact
+range, but it never misses a legal value.  Every arithmetic step rounds its
+lower bound toward -Infinity and its upper bound toward +Infinity, so float
+error can only widen the result, never shrink it.
+
+Endpoint evaluation alone is not enough even for simple expressions:
+`x * (1 - x)` over `x` in `[0, 1]` is 0 at both endpoints but reaches
+0.25 in between, and the interval result contains it.
+
+Supported constructs: the four arithmetic operators, integer powers (and
+non-integer powers on non-negative bases), `MIN`/`MAX`/`ABS`,
+comparisons, and `IF`.  A comparison over intervals is tri-state; when it
+cannot be decided, `IF` merges both branches and records a
+`:branch_merge` relaxation.  When a divisor's interval contains zero, the
+result is unbounded and the points where the expression is undefined are
+reported separately:
+
+```ruby
+> r = c.evaluate_interval('1 / x', x: [-1, 2])
+> r.unbounded?        #=> true
+> r.undefined         #=> [#<Dentaku::Interval [0.0, 0.0]>]
+> r.relaxations.map(&:kind)
+#=> [:division_by_zero]
+```
+
+Custom functions only participate in interval evaluation when they provide
+an interval rule; anything else widens to an unbounded interval with an
+`:unknown_rule` relaxation:
+
+```ruby
+> c.add_function(:double, :numeric, ->(x) { x * 2 })
+> c.evaluate_interval('double(x)', x: [1, 2]).unbounded?
+#=> true
+> c.add_interval_rule(:double) { |x| x * 2 }
+> c.evaluate_interval('double(x)', x: [1, 2]).interval
+#=> #<Dentaku::Interval [2.0, 4.0]>
+```
+
+`Dentaku.evaluate_interval` is available as a module-level shortcut, and
+`Dentaku::IntervalEvaluator.register_rule` registers process-wide rules.
+
 THANKS
 ------
 

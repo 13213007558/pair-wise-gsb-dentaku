@@ -17,6 +17,10 @@ module Dentaku
     calculator.value.evaluate!(expression, data, &block)
   end
 
+  def self.evaluate_interval(expression, data = {}, **kwargs)
+    calculator.value.evaluate_interval(expression, data, **kwargs)
+  end
+
   def self.enable_caching!
     enable_ast_cache!
     enable_dependency_order_cache!
