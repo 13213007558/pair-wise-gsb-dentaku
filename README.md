@@ -402,6 +402,111 @@ The predicate itself is then evaluated exactly once per `evaluate!` call,
 at evaluation time.  In `add_functions`, pass volatility as a fifth tuple
 element: `[:user_level, :numeric, -> { ... }, nil, true]`.
 
+EXPRESSION-DEFINED FUNCTIONS
+----------------------------
+
+External functions are Ruby lambdas, which means someone has to write --
+and Dentaku has to trust -- Ruby code.  When the "implementation" is just
+another formula, you can declare it as a Dentaku expression instead:
+
+```ruby
+> c = Dentaku::Calculator.new
+> c.define_function('margin(revenue, cost)', '(revenue - cost) / revenue')
+> c.evaluate!('margin(100, 40)')
+#=> 0.6e0
+> c.evaluate!('margin(revenue, cost) * 100', revenue: 250, cost: 50)
+#=> 80
+```
+
+The declaration can also be written as a single string, the way an analyst
+would write it down:
+
+```ruby
+> c.define_function('margin(revenue, cost) = (revenue - cost) / revenue')
+```
+
+### Parameters, defaults, and constants
+
+Parameters are positional.  Trailing parameters may declare defaults, and a
+default may reference the constants and the parameters declared before it:
+
+```ruby
+> c.define_function('scale(value, factor = value * 2)', 'value + factor')
+> c.evaluate!('scale(3)')
+#=> 9
+> c.evaluate!('scale(3, 10)')
+#=> 13
+```
+
+A function can capture an explicit constant environment at definition
+time.  Constants always win over same-named variables the caller happens
+to store, and parameters in turn shadow constants:
+
+```ruby
+> c.define_function('total(price)', 'price + fee', constants: { fee: 5 })
+> c.evaluate!('total(10)', fee: 999)
+#=> 15
+```
+
+Bodies are hermetic: every identifier must be a parameter or a captured
+constant, so a call never reads the caller's memory -- and a failed call
+never writes anything into it either.
+
+### Calling other functions, recursion
+
+Bodies may call built-in functions, Ruby-registered functions, and other
+expression-defined functions.  Calls to functions that already exist bind
+when the caller is defined; calls to not-yet-defined functions (forward
+references, direct and mutual recursion) resolve when the call runs:
+
+```ruby
+> c.define_function('is_even(n)', 'if(n = 0, true, is_odd(n - 1))')
+> c.define_function('is_odd(n)', 'if(n = 0, false, is_even(n - 1))')
+> c.evaluate!('is_even(10)')
+#=> true
+```
+
+### Versioning
+
+Re-defining a name registers a new version instead of mutating the old
+one.  Formulas compiled before the redefinition keep evaluating the
+version they were compiled against; new compilations bind the current
+version.  Both directions are inspectable:
+
+```ruby
+> c.define_function('rate()', '0.1')
+> compiled = c.ast('rate() * 100')
+> c.define_function('rate()', '0.2')
+> c.function_version(:rate)
+#=> 2
+> c.evaluate!(compiled)            # still version 1
+#=> 10
+> c.evaluate!('rate() * 100')      # freshly compiled: version 2
+#=> 20
+> c.ast('rate()').class.definition.version
+#=> 2
+```
+
+(As with Ruby-registered functions, a cached AST keeps the version it was
+compiled with -- call `clear_cache` to recompile against current
+versions.)
+
+### Budgets and error reporting
+
+Recursion is bounded by two per-evaluation budgets, configurable per
+calculator: `max_function_call_depth` (nested calls, default 64) and
+`max_function_operations` (total invocations, default 10_000).  Exceeding
+either raises `Dentaku::FunctionBudgetError`, and any error raised inside
+an expression-defined function carries the chain of calls that led to it:
+
+```ruby
+> c = Dentaku::Calculator.new(max_function_call_depth: 5)
+> c.define_function('loop(n)', 'loop(n + 1)')
+> c.evaluate!('loop(1)')
+#=> Dentaku::FunctionBudgetError: expression function call depth exceeded
+#   budget of 5 at loop(v1) [in loop(v1) -> loop(v1) -> ... ]
+```
+
 FUNCTION ALIASES
 ----------------
 

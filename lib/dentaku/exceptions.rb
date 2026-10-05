@@ -3,11 +3,41 @@ module Dentaku
   # everything the gem raises, including exceptions that subclass Ruby
   # built-ins (Dentaku::ArgumentError, Dentaku::ZeroDivisionError).
   module Error
-    attr_accessor :assigned_to
+    attr_accessor :assigned_to, :call_chain
+
+    # when an error escapes an expression-defined function, the runtime
+    # annotates it with the chain of function calls that led to it, and
+    # the chain becomes part of the message
+    def message
+      chain = call_chain
+      return super if chain.nil? || chain.empty?
+
+      "#{super} [in #{chain.join(' -> ')}]"
+    end
   end
 
   class BaseError < StandardError
     include Error
+  end
+
+  # raised by Calculator#define_function when the declaration itself is
+  # malformed (bad signature, duplicate parameters, a required parameter
+  # after a defaulted one, a default that references unknown names, ...)
+  class FunctionDefinitionError < BaseError
+  end
+
+  # raised when an expression-defined function evaluation exceeds the
+  # configured call-depth or operation-count budget
+  class FunctionBudgetError < BaseError
+    attr_reader :reason, :limit
+
+    def initialize(reason, limit, call_stack, attempted_label)
+      @reason = reason
+      @limit = limit
+      resource = reason == :depth ? "call depth" : "operation count"
+      super("expression function #{resource} exceeded budget of #{limit} at #{attempted_label}")
+      self.call_chain = call_stack + [attempted_label]
+    end
   end
 
   class UnboundVariableError < BaseError

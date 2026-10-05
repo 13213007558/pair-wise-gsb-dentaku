@@ -1,6 +1,8 @@
 require 'dentaku/bulk_expression_solver'
 require 'dentaku/dependency_resolver'
 require 'dentaku/exceptions'
+require 'dentaku/expression_function_definition'
+require 'dentaku/expression_function_runtime'
 require 'dentaku/flat_hash'
 require 'dentaku/parser'
 require 'dentaku/string_casing'
@@ -11,10 +13,13 @@ module Dentaku
     include StringCasing
     attr_reader :result, :memory, :tokenizer, :case_sensitive,
                 :nested_data_support, :ast_cache, :raw_date_literals
+    attr_accessor :max_function_call_depth, :max_function_operations
 
     def initialize(case_sensitive: false, aliases: nil, nested_data_support: true,
                    raw_date_literals: true, ast_cache: {},
-                   cache_ast: nil, cache_dependency_order: nil)
+                   cache_ast: nil, cache_dependency_order: nil,
+                   max_function_call_depth: ExpressionFunctionRuntime::DEFAULT_MAX_DEPTH,
+                   max_function_operations: ExpressionFunctionRuntime::DEFAULT_MAX_OPERATIONS)
       clear
       @tokenizer = Tokenizer.new
       @case_sensitive = case_sensitive
@@ -26,6 +31,9 @@ module Dentaku
       @cache_dependency_order = cache_dependency_order
       @disable_ast_cache = false
       @function_registry = Dentaku::AST::FunctionRegistry.new
+      @max_function_call_depth = max_function_call_depth
+      @max_function_operations = max_function_operations
+      @expression_function_versions = {}
     end
 
     # explicitly configured aliases win; otherwise the module-level default is
@@ -50,6 +58,53 @@ module Dentaku
     def add_functions(functions)
       functions.each { |(name, type, body, callback, volatile)| add_function(name, type, body, callback, volatile: !!volatile) }
       self
+    end
+
+    # Declares a function as a Dentaku expression so callers never have to
+    # build Ruby code:
+    #
+    #   calculator.define_function('margin(revenue, cost)', '(revenue - cost) / revenue')
+    #   calculator.define_function('margin(revenue, cost) = (revenue - cost) / revenue')
+    #   calculator.define_function('taxed(price, rate = 0.1)', 'price * (1 + rate)')
+    #   calculator.define_function('total(price)', 'price + fee', constants: { fee: 5 })
+    #
+    # Returns the ExpressionFunctionDefinition. Re-defining a name registers
+    # a new version; formulas compiled earlier keep the version they were
+    # compiled against (inspectable via the node's class definition), while
+    # new compilations bind the current version.
+    def define_function(signature, body = nil, constants: {})
+      name = ExpressionFunctionDefinition.declaration_name(signature)
+      version = (@expression_function_versions[name.downcase] || 0) + 1
+
+      definition = ExpressionFunctionDefinition.build(
+        signature,
+        body,
+        constants: constants,
+        version: version,
+        registry: @function_registry,
+        parse_options: {
+          aliases: aliases,
+          case_sensitive: case_sensitive,
+          raw_date_literals: raw_date_literals
+        }
+      )
+
+      @function_registry.register_class(definition.name, definition.function_class)
+      @expression_function_versions[definition.name.downcase] = definition.version
+      definition
+    end
+
+    # the version an expression-defined function is currently registered
+    # at, or nil when no expression function with that name exists
+    def function_version(name)
+      @expression_function_versions[name.to_s.downcase]
+    end
+
+    # the definition an expression-defined function currently resolves to,
+    # or nil when the name is not an expression-defined function
+    def function_definition(name)
+      klass = @function_registry.get(name)
+      klass.respond_to?(:definition) ? klass.definition : nil
     end
 
     def disable_cache
@@ -167,7 +222,15 @@ module Dentaku
     end
 
     def evaluation_context(data, evaluation_mode)
-      data.key?(:__evaluation_mode) ? data : data.merge(__evaluation_mode: evaluation_mode)
+      return data if data.key?(:__evaluation_mode)
+
+      data.merge(
+        __evaluation_mode: evaluation_mode,
+        ExpressionFunctionRuntime::CONTEXT_KEY => ExpressionFunctionRuntime.new(
+          max_depth: max_function_call_depth,
+          max_operations: max_function_operations
+        )
+      )
     end
 
     def store(key_or_hash, value = nil)
